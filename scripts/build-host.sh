@@ -21,16 +21,16 @@ for extra in "$HOME/.local/bin" "$HOME/.local/share/mise/shims"; do
 done
 export PATH
 
-ARIA_DIR="${ARIA_DIR:-/mnt/c/work/20260809/aria}"
-BUILD_DIR="${BUILD_DIR:-$HOME/build/aria-host}"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${BUILD_DIR:-$HOME/build/mscz-host}"
 JOBS="${JOBS:-$(nproc)}"
 TARGETS=("$@")
 if [ ${#TARGETS[@]} -eq 0 ]; then
-    TARGETS=(score_render_probe)
+    TARGETS=(mscz_probe)
 fi
 
-if [ ! -d "${ARIA_DIR}/sandbox/engraving" ]; then
-    echo "aria checkout not found at ${ARIA_DIR}" >&2
+if [ ! -d "${REPO_DIR}/vendor/aria/src/engraving" ]; then
+    echo "vendor/aria is missing. Run scripts/vendor-aria.sh first." >&2
     exit 1
 fi
 
@@ -39,18 +39,10 @@ fi
 # Linux branch of GlobalConfiguration::resolveAppDataPath() needs them, so a
 # Linux host build fails to compile without these. The render core embeds its
 # resources, so the path they produce is never actually used.
-# Configured through this repo's own CMakeLists.txt rather than aria's, so the
-# Qt policy that makes the engine modules static can be set without patching
-# aria. See the comments there.
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
 cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_C_COMPILER=/usr/bin/gcc \
-    -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-    -DARIA_DIR="${ARIA_DIR}" \
-    -DMUSE_APP_INSTALL_PREFIX=/usr/local \
-    -DMUSE_APP_INSTALL_NAME=mscz_test
+    -DCMAKE_CXX_COMPILER=/usr/bin/g++
 
 cmake --build "${BUILD_DIR}" --target "${TARGETS[@]}" -j "${JOBS}"
 

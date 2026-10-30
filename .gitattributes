@@ -1,2 +1,6 @@
 *.sh text eol=lf
 *.ps1 text eol=crlf
+
+# Keep the vendored tree byte-identical to what vendor-aria.sh copied, so a
+# re-vendor produces no spurious diff and nothing in it gets CRLF-mangled.
+vendor/** -text
