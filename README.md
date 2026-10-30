@@ -1,0 +1,361 @@
+# mscz_test — mscz をブラウザで表示する（Qt非依存・SVG出力）
+
+MuseScore の `.mscz` をブラウザで表示し、移調して表示できるようにするための実験リポジトリ。
+将来 [podium](https://github.com/studiop5/podium) に組み込むことを想定しているが、**このリポジトリの
+ゴールは単体で Web 表示できるところまで**。
+
+ベースにするのは [aria](https://github.com/hdi200/aria)（MuseScore Studio 4.7.5 派生のスコアリーダー）の
+レンダーコア。想定配置:
+
+```
+C:\work\20260809\aria       aria のクローン（エンジン本体）
+C:\work\20260809\mscz_test  このリポジトリ
+```
+
+## なぜ aria をベースにできるのか
+
+aria には `sandbox/engraving/score_render_core.h` という **Qt 型を一切公開しない C++ ファサード**が
+既にある。`.mscz` の読み込み・レイアウト・移調は全部ここで済んでいる。
+
+| やりたいこと | 既存 API |
+|---|---|
+| スコアを開く | `ScoreRenderSession::open(path)` |
+| ページを描く | `renderPage(pageIndex, dpi, RenderedPage&)` → PNG / PDF |
+| **表示だけ移調** | `setViewTransposeKey(targetKey)` / `clearViewTranspose()` |
+| コンサートピッチ | `setConcertPitchEnabled(bool)` |
+| パート譜切替 | `setActivePartIndex(optional<int>)` |
+| 元の調を知る | `scoreStartKey()` |
+| レイアウト回帰チェック | `layoutFingerprint()` |
+
+つまり**新しく書くのは出力段だけ**。描画は必ず `muse::draw::IPaintProvider`
+(`src/framework/draw/ipaintprovider.h`) を通るので、ここに SVG 実装を 1 本足せばよい。
+メソッドは 30 個程度（drawPath / drawPolygon / drawText / drawSymbol / drawPixmap /
+clip / transform / save-restore）。Qt 非依存の実装例として `bufferedpaintprovider.cpp`
+（描画コマンドを `DrawData` に記録）が既にある。
+
+## Qt 依存の実体
+
+| 層 | 状況 |
+|---|---|
+| `src/engraving`（471 cpp） | **Qt を include しているのは 5 ファイルだけ**。CMake の `Qt::Quick` は `MUE_BUILD_ENGRAVING_QML=OFF` で不要 |
+| `muse::global` | 独自の String / ByteArray / json / xml / **zip(zlib)** を持ち、Qt 依存は `NO_QT_SUPPORT` でガード済み。上流に `MUSE_QT_SUPPORT=OFF` スイッチあり |
+| `muse::draw` | `DRAW_NO_INTERNAL` で Qt プロバイダを外せる |
+| **aria の `sandbox/engraving/*.cpp`** | ここが一番 Qt 漬け。QImage / QPdfWriter / QBuffer（出力）、QGuiApplication（初期化）、QFile / QDir / QSaveFile（IO）、QJson*、QThread、QMimeData。量は限定的 |
+
+### 最大のリスク: フォント
+
+aria の iOS / Android 経路は `DRAW_QT_FONT_PROVIDER_ONLY` + `MUSE_MODULE_DRAW_USE_QTTEXTDRAW` で
+**Qt のフォントメトリクスとテキスト描画に依存**している（`fontengineft.cpp` は
+`src/framework/draw/CMakeLists.txt` でコメントアウト済み）。Qt を外すと FreeType + HarfBuzz の
+`fontprovider.cpp` / `fontsengine.cpp` 経路に切り替わり、**メトリクスが変われば譜面の見た目が変わる**。
+Phase 1 でネイティブの参照出力を取っておくのは、この差分を見えるようにするため。
+
+また `IFontFace` には glyphBbox / advance はあるが**グリフのアウトライン取得 API が無い**
+（msdfgen の Shape は無効化中）。記号をパス化するには `FT_Outline_Decompose` を使うメソッドを
+追加する必要がある。
+
+## 決定事項
+
+| 項目 | 決定 |
+|---|---|
+| 出力形式 | **SVG**（1 ページ 1 SVG） |
+| フォント | **ハイブリッド**: 音楽記号（`drawSymbol`）はパス化して `<defs>` + `<use>` で再利用、文章（`drawText`）は `<text>` + フォント埋め込み |
+| 機能範囲 | 表示 + 移調 + パート譜切替 + コンサートピッチ。**再生・編集は後回し**（再生は FluidSynth + 数十 MB の SoundFont が必要） |
+| 移調 UI | まず半音単位の上下。他方式（調指定・楽器の移調）も足せる形にしておく |
+| ビルド環境 | WSL2 の使い捨てディストロ `mscz_dev` |
+
+## フェーズ計画
+
+**Phase 1 — ネイティブ（Qt 付き）で見た目を確定させる**
+- WSL 上で aria のホストビルドを通す
+- `SvgPaintProvider : IPaintProvider` を書く
+- 出力 SVG を既存の PNG / PDF と見比べ、`layoutFingerprint()` で回帰チェック
+- → **Qt 経由の参照出力が取れる状態で正しさを確定させるのが目的**
+
+**Phase 2 — aria から必要なものを取り込み、Qt を外す（まだネイティブ）**
+- **aria のソースをこのリポジトリに vendor し、自由に改変する**（次節）
+- `MUSE_QT_SUPPORT=OFF` / `DRAW_NO_INTERNAL`
+- フォントを FreeType + HarfBuzz 経路に切り替え、Phase 1 の出力と差分を取る
+- グルー層（QFile / QJson / QImage / QGuiApplication …）を置換
+
+**Phase 3 — emscripten で wasm 化**
+- サイズ最小化が要件。後述の方針に従う
+
+## aria コードの取り込み方（Phase 2 以降）
+
+**Phase 1 だけは aria を無改変で使う**（参照出力を取るため。ルートの
+[CMakeLists.txt](CMakeLists.txt) が aria の `sandbox/engraving` を
+`add_subdirectory` するラッパになっている）。
+
+**Phase 2 以降は aria の必要部分をこのリポジトリに取り込み、自由に改変する。**
+上流追従は目的ではないので、CMake もソースも遠慮なく削る。
+
+### 粒度の現実
+
+engraving は 471 個の `.cpp` が密に依存し合っているので、**ファイル単位で選ぶのは非現実的**。
+実際には「モジュールごと取り込んでディレクトリ単位で削る」になる。自己完結していて
+削りやすいのは:
+
+| 削れるディレクトリ | 理由 |
+|---|---|
+| `engraving/api/v1/` | QML プラグイン API（`ENGRAVING_NO_API`） |
+| `engraving/playback/` + `engraving/compat/midi/` | 再生はスコープ外 |
+| `engraving/accessibility/` | スクリーンリーダ連携 |
+| `engraving/rendering/editmode/` | 編集モード描画 |
+| `engraving/qml/` | QML |
+| `engraving/data/fonts/*.qrc` | **約 15MB のフォント埋め込み。最大のサイズ要因** |
+| `importexport/musicxml/` 全体 | `.mscz` / `.mscx` のみ対応なら不要 |
+| aria の `score_render_edit_commands.cpp` ほか編集・再生・修復系 | 表示のみなら不要 |
+
+`rw/read114` `rw/read206` `rw/read302` は旧フォーマット読み込みなので、対応する
+最小フォーマットを決めてから落とすか残すかを判断する。
+
+### 来歴の記録
+
+取り込んだら**どの aria / MuseScore のコミットから持ってきたか**を必ず残す
+（aria 自身が `sandbox/engraving/compat/ENGINE.md` で同じことをしている）。
+でないと上流のバグ修正を当てられなくなる。`vendor/` 配下に取り込み元の
+コミットハッシュと取得日を書いたマニフェストを置く。
+
+### ライセンス
+
+**aria / MuseScore は GPL-3.0-only。** そのソースをこのリポジトリに取り込むと、
+**このリポジトリ自体が GPL-3.0-only になる。** このリポジトリに podium のコードは
+入らないので、**GPL-3.0-only で公開すればそれで完結する。**
+取り込み時に `LICENSE` と第三者通知を整えること。
+
+AGPL が関わるのは podium に組み込む段階だけ。詳細は後述の「将来の podium 組み込み」。
+
+## wasm サイズを小さく保つ方針
+
+**サイズは最優先の制約**なので、Phase 2 の時点から「Phase 3 で積まないものは積まない」形で作る。
+
+### 0. 最大の要因はコードではなくフォント（実測）
+
+`src/engraving` は **14 個の `.qrc` でフォント 13 ファミリをライブラリに埋め込む**
+（`src/engraving/data/fonts/*.qrc` → `fonts/`。ビルドログに
+`qrc_fonts_Bravura.o` `qrc_fonts_Leland.o` … が並ぶ）。実測した埋め込み対象:
+
+| | サイズ |
+|---|---|
+| FreeSerif / FreeSans 系 `.ttf`（テキストのフォールバック） | 約 7.5MB |
+| bravura（`bravura_metadata.json` 768K を含む） | 2.6MB |
+| petaluma | 1.5MB |
+| mscore | 1.2MB |
+| finalemaestro / musejazz / gootville / finalebroadway / campania | 計 約 1.9MB |
+| **leland（MuseScore 4 の既定の音楽フォント）** | **380KB** |
+| **edwin（既定のテキストフォント）** | **564KB** |
+| smufl（`glyphnames.json` / `ranges.json`、`Smufl::init()` が必要） | 528KB |
+
+**合計で約 15MB。** 既定スタイルの `.mscz` を表示するだけなら leland + edwin + smufl の
+**約 1.5MB で足りる**。残りはスコアが明示的に指定したときだけ要るので、
+**HTTP で遅延取得**する。つまりここだけで 10MB 以上削れる見込みで、
+コード側のどの最適化より効く。
+
+（`fonts/*.sfd` は FontForge のソースで埋め込まれていないため、上表には含めていない。）
+
+### 1. aria のレンダーコアをそのまま持ってこない
+
+`sandbox/engraving/score_render_core.cpp` は**全パーツを `#include` する単一の翻訳単位**で、
+`Impl` クラス1つのメンバ関数が各ファイルに散っている（`score_render_runtime.cpp`,
+`score_render_edit_commands.cpp`, `score_render_playback.cpp` …）。
+**一部のファイルだけ持ってきても成立しない。**
+
+そこで表示に必要な部分だけの薄いファサード（仮 `mscz_web_core.cpp`）を書き、
+engraving の API を直接叩く。aria の `score_render_runtime.cpp` /
+`score_render_open_save.cpp` / `score_render_pages.cpp` から必要なロジックを移植する形で
+「表示機能の再利用」を実現する。これで以下が最初から入らない:
+
+| 外せるもの | 規模 |
+|---|---|
+| FluidSynth + SoundFont 再生 + リバーブ | 大（再生はスコープ外） |
+| MIDI 書き出し | 中 |
+| `iex_musicxml`（MusicXML 入出力） | ソース 13MB 相当。`.mscz` / `.mscx` のみ対応なら不要 |
+| `score_render_edit_commands.cpp`（編集） | 4753 行 |
+| 破損スコア修復 | 中 |
+
+### 2. ビルドスイッチ
+
+- `MUSE_QT_SUPPORT=OFF` / `DRAW_NO_INTERNAL` — Qt を完全に落とす（Phase 2 の目的そのもの）
+- `DRAW_NO_QSVGRENDER` — `svgrenderer.cpp`（QSvgRenderer）を落とす
+- `ENGRAVING_NO_API=ON` — プラグイン API
+- `MUE_BUILD_ENGRAVING_QML / TESTS / DEVTOOLS=OFF`
+- `MUE_BUILD_ENGRAVING_PLAYBACK=OFF`
+
+### 3. サードパーティを削る
+
+- **FreeType**: 独自の `ftmodule.h` で TrueType + CFF + SFNT + smooth ラスタライザだけ残し、
+  BDF / PCF / Type1 / CID / PFR / Windows FNT / PNG / bzip2 を落とす
+- **HarfBuzz**: `HB_TINY` 系の設定。歌詞やタイトルの複雑テキスト整形にしか要らないので、
+  落とせるかは要検証（音楽記号は単一グリフなので HarfBuzz 不要）
+- **zlib**: `.mscz` は zip なので必須。小さい
+
+### 4. emscripten のリンクフラグ
+
+- `-Oz -flto`、`wasm-opt -Oz --strip-debug --strip-producers`
+- `-sMALLOC=emmalloc`、`-sENVIRONMENT=web,worker`、`-sMODULARIZE -sEXPORT_ES6`、`--no-entry`
+- `-sFILESYSTEM=0`（または最小の MEMFS のみ）
+- **`-fno-rtti` を試す価値がある**。engraving は `EngravingItem::type()` + `isXxx()` の
+  独自型システムを持つので `dynamic_cast` 依存が薄い可能性がある。効けば大きい
+- 例外も同様に要計測（`-fno-exceptions` が通るか）
+- 配信は brotli
+
+### 5. フォントの積み方（上の「0.」の具体策）
+
+登録の実体は `src/engraving/engravingmodule.cpp:170-240` の
+`IFontsDatabase::addFont(FontDataKey, path)` で、全ファミリをここで列挙している。
+
+**フォントの読み込みは既に遅延になっている。** `FontsDatabase` は `{key, path}` しか保持せず
+(`fontsdatabase.h:49-52`)、実バイトは `fontData()` が要求時にファイルから読む
+(`fontsdatabase.cpp:106-114`)。したがって:
+
+- `.qrc` 経由の埋め込みをやめ、フォントを MEMFS 上の実ファイルにすれば、
+  wasm バイナリにもプリロードにも入れずに済む
+- ただし `addFont()` は登録時に `io::File::exists(path)` を確認する
+  (`fontsdatabase.cpp:86`) ので、**取得してから登録**する必要がある。
+  つまり「必要なフォントを判定 → JS が fetch して MEMFS に書く → 登録 → レンダリング」
+  の2パス構成にする
+- `addAdditionalFonts(dir)` がディレクトリ内の `fontslist.json` を読む仕組みを持っており
+  (`fontsdatabase.cpp:152`)、後から取得したフォントを足す口として使える
+- 実際に使う SMuFL レンジだけにサブセット化する
+- `bravura_metadata.json` のような 768KB の JSON も埋め込み対象なので、
+  使うフォントの metadata だけに絞る
+- 「記号=パス化」の決定がここで効く: 記号を `<defs>` + `<use>` で出すなら
+  **ブラウザ側には音楽フォントを一切送らなくて済む**（wasm 側だけがアウトライン取得に必要）
+
+**注意: 既定とフォールバックは Leland ではなく Bravura。**
+`setDefaultFont(Font::Type::MusicSymbol, u"Bravura")` と
+`m_engravingfonts->setFallbackFont("Bravura")` になっている
+（`.mscz` 側のスタイルは通常 Leland を指定するが、フォールバックが Bravura）。
+Bravura は metadata を含めて 2.6MB あるので、**我々のビルドではフォールバックを Leland に
+変える**。上流との意図的な差異なので、変更したら ENGINE 差分として記録すること。
+
+### 6. 推測せず測る
+
+`emcc --emit-symbol-map` + `wasm-opt --metrics`、または `twiggy` でサイズを帰属させる。
+Phase 1 のホストビルドでも `llvm-size` でオブジェクトごとの大きさを見て当たりを付けられる。
+
+## 将来の podium 組み込みについて（メモ）
+
+podium は**完全に PDF 前提**のアーキテクチャ。pdf.js で描画し、pdf-lib で注釈・ブックマーク・
+メタデータを **PDF ファイル自体に保存**している。したがって統合コストだけで言えば
+「mscz → PDF」のほうが楽（既存のレイアウト・注釈・ページ送り機構がそのまま効く）。
+SVG にすると podium 側に新しいビューア経路が必要になる。SVG / PDF のどちらも
+`IPaintProvider` 実装なので、Phase 2 以降で PDF 版を足すことは可能。
+
+**ライセンス**: aria / MuseScore は GPL-3.0-**only**、podium は AGPL-3.0。
+
+両者を混ぜること自体は明示的に許可されている。GPLv3 §13 と AGPLv3 §13（第2段）が
+相手とのリンク・結合を相互に許可しており、**各パートは元のライセンスのまま**になる。
+ただし GPLv3 §13 は「ネットワーク越しの対話に関する **AGPLv3 §13 の特別要件は結合物
+そのものに適用される**」と定めている。
+
+したがって:
+
+- **結合物を「GPL-3.0」として公開することはできない。** AGPL §13 の義務が落ちてしまう
+- 正しい形は「GPL-3.0-only と AGPL-3.0 の両方を同梱し、結合物には AGPL §13 が及ぶ」
+- AGPLv3 → GPLv3 の再ライセンスも不可。GPL-3.0-only なので AGPL への格上げも不可だが、
+  **§13 は格上げを要求していない**ので支障はない
+- 実務上は、wasm エンジンを**独立した GPL-3.0-only コンポーネント**として分離した形
+  （別ディレクトリ・別 LICENSE・ソース提供経路も別）に保つのが安全。podium のツリーに
+  溶かし込むと、どのコードがどのライセンスか追えなくなる
+
+（法務の確認は別途必要。ここはライセンス本文に即した整理）
+
+## 開発環境（WSL2: mscz_dev）
+
+Windows 側には何も入れない。C++ ツールチェーンと Qt6 は distro 内の apt から、それ以外は
+distro 内の **mise** から入る（`mise registry` に cmake / ninja / emsdk / python がある。
+gcc と Qt6 は mise に無いので apt）。
+
+### 構築
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\wsl\New-MsczDevDistro.ps1
+```
+
+| 操作 | コマンド |
+|---|---|
+| 作り直す（破壊してから再構築） | `... New-MsczDevDistro.ps1 -Force` |
+| プロビジョニングだけやり直す | `... New-MsczDevDistro.ps1 -ProvisionOnly` |
+| 破棄するだけ | `... New-MsczDevDistro.ps1 -DestroyOnly` |
+| 傍受プロキシが無い環境 | `... New-MsczDevDistro.ps1 -CorporateCA Never`（通常は不要、下記参照） |
+| シェルを開く | `wsl -d mscz_dev` |
+| 1 コマンド実行 | `wsl -d mscz_dev -- bash -lc 'cmake --version'` |
+
+distro は**いつでも捨てて作り直せる**前提。中に大事なものを置かないこと。
+`provision.sh` は冪等なので何度流しても同じ状態になる。
+
+- `scripts/wsl/New-MsczDevDistro.ps1` — Windows 側。distro の登録・破棄・CA書き出し
+- `scripts/wsl/provision.sh` — distro 内。apt → TLS 判定 → ユーザ作成 → mise → ツール導入
+- `scripts/build-host.sh` — distro 内。Phase 1 のホストビルド
+
+`/etc/wsl.conf` で `appendWindowsPath=false` にしてあるので、Windows の PATH は distro に
+漏れてこない。
+
+### ベース distro は Ubuntu 26.04 でなければならない
+
+**aria は Qt >= 6.8 を要求する。** `buildscripts/cmake/SetupQt6.cmake` が
+`find_package(Qt6 6.8 REQUIRED)` で、`src/framework/global/io/internal/filesystem.cpp` が
+Qt 6.8 で入った `QDirListing` を使う（`sandbox/engraving/CMakeLists.txt` にある
+`find_package(Qt6 6.3)` は実態より緩い）。
+
+| Ubuntu | apt の Qt6 | |
+|---|---|---|
+| 24.04 LTS (noble) | 6.4.2 | ビルド不可 |
+| 25.04 (plucky) | 6.8.3 | 可 |
+| 25.10 (questing) | 6.9.2 | 可 |
+| **26.04 LTS (resolute)** | **6.10.2** | **既定。aria の top-level CMakeLists の "Min. required by Qt 6.10" と一致** |
+
+### TLS 傍受プロキシの有無（両対応）
+
+既定の `-CorporateCA Auto` では:
+
+1. `New-MsczDevDistro.ps1` が Windows の `LocalMachine\Root` と `LocalMachine\CA` を
+   PEM に書き出す（ローカル処理なので安い）
+2. `provision.sh` が **HTTPS を実際に叩いて確かめる**
+   - 通れば、書き出した CA は**入れない**（素の trust store のまま）
+   - 通らなければ Windows の root を `update-ca-certificates` で導入して再確認
+
+つまり傍受プロキシのある環境でも無い環境でも、同じコマンドで通る。
+`-CorporateCA Never` にすれば書き出し自体を行わない。
+
+書き出しは**特定の発行者を探さず machine trust store をまるごと**出すので、どの傍受環境でも
+同じ仕組みで動く（書き出し先は `%TEMP%` で、リポジトリには入らない）。
+
+なお **apt は `http://archive.ubuntu.com` と平文で話すので通ってしまい**、失敗はもっと後の
+HTTPS 取得で初めて出る。そのため `provision.sh` は apt の直後に HTTPS を検査する。
+
+mise は Rust 製で独自の trust store を持ちうるため、CA 導入時は
+`SSL_CERT_FILE` / `SSL_CERT_DIR` / `CURL_CA_BUNDLE` / `REQUESTS_CA_BUNDLE`（emsdk の Python 用）/
+`NODE_EXTRA_CA_CERTS` / `CARGO_HTTP_CAINFO` も `/etc/profile.d/10-corporate-ca.sh` で設定する。
+
+### はまりどころ
+
+- **`wsl.exe` の引数はバックスラッシュを落とす。** Git Bash / PowerShell のどちらから呼んでも
+  起きる。`wslpath` に Windows パスを渡すのは不可（`C:work20260809...` になる）ので、
+  パス変換は PowerShell 側で `/mnt/c/...` を組み立てている。distro に渡す中身は
+  **引数ではなくファイル経由**にすること。
+- **Git Bash は `/mnt/c/...` を Windows パスに変換してしまう。** `MSYS_NO_PATHCONV=1` を付ける。
+- **Ubuntu の `.bashrc` は非対話シェルで早期 return する**ので、`wsl -- bash -lc '...'` では
+  そこに書いた `mise activate` が効かない。mise の shims を
+  `/etc/profile.d/20-mise.sh` で PATH に入れている。
+
+### Linux ホストビルドに必要な追加フラグ
+
+aria のホストビルドは macOS でしか行われていないため、Linux では
+`MUSE_APP_INSTALL_PREFIX` / `MUSE_APP_INSTALL_NAME` が未定義でコンパイルが落ちる
+（`muse_framework_config.h` の `#cmakedefine` 経由で
+`GlobalConfiguration::resolveAppDataPath()` の Linux 分岐が使う。
+`sandbox/engraving/CMakeLists.txt` は Android のときだけ設定している）。
+`scripts/build-host.sh` で `-D` して回避している。レンダーコアはリソースを埋め込むので、
+この値が指すパスは実際には使われない。
+
+### Windows 側で何かが必要になったら
+
+Windows には mise だけが入っている。何か足すときは mise 経由で入れ、使うときは必ず
+`mise exec --` を明示する。
+
+```powershell
+mise exec -- <command>
+```
