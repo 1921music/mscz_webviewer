@@ -199,39 +199,55 @@ else()
         settings.cpp
         settings.h
 
-        api/apitypes.h
-        api/iapiregister.h
-        api/iapiengine.h
-        api/internal/apiregister.cpp
-        api/internal/apiregister.h
-        api/apiobject.cpp
-        api/apiobject.h
-        api/jsretval.h
-        api/apiutils.h
-        api/logapi.cpp
-        api/logapi.h
-        api/interactiveapi.cpp
-        api/interactiveapi.h
-        api/processapi.cpp
-        api/processapi.h
-        api/filesystemapi.cpp
-        api/filesystemapi.h
-
         internal/baseapplication.cpp
         internal/baseapplication.h
         internal/globalconfiguration.cpp
         internal/globalconfiguration.h
-        internal/interactive.cpp
-        internal/interactive.h
-        internal/cryptographichash.cpp
-        internal/cryptographichash.h
         internal/process.cpp
         internal/process.h
-        internal/systeminfo.cpp
-        internal/systeminfo.h
-        internal/tickerprovider.cpp
-        internal/tickerprovider.h
     )
+
+    # mscz_test: these are all Qt wrappers -- the JS API layer needs QObject and
+    # QMetaEnum, Interactive needs QUrl and the ui module, SystemInfo is
+    # QSysInfo, CryptographicHash is QCryptographicHash and TickerProvider is
+    # QTimer. The Qt-free build takes the first three out entirely, and replaces
+    # the last two with implementations that have no Qt in them.
+    if (MUSE_QT_SUPPORT)
+        target_sources(muse_global PRIVATE
+            api/apitypes.h
+            api/iapiregister.h
+            api/iapiengine.h
+            api/internal/apiregister.cpp
+            api/internal/apiregister.h
+            api/apiobject.cpp
+            api/apiobject.h
+            api/jsretval.h
+            api/apiutils.h
+            api/logapi.cpp
+            api/logapi.h
+            api/interactiveapi.cpp
+            api/interactiveapi.h
+            api/processapi.cpp
+            api/processapi.h
+            api/filesystemapi.cpp
+            api/filesystemapi.h
+
+            internal/interactive.cpp
+            internal/interactive.h
+            internal/cryptographichash.cpp
+            internal/cryptographichash.h
+            internal/systeminfo.cpp
+            internal/systeminfo.h
+            internal/tickerprovider.cpp
+            internal/tickerprovider.h
+        )
+    else()
+        target_sources(muse_global PRIVATE
+            internal/cryptographichashstd.cpp
+            internal/cryptographichashstd.h
+            internal/tickerproviderstub.h
+        )
+    endif()
 
     include(GetPlatformInfo)
 

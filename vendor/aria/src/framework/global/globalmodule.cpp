@@ -31,22 +31,30 @@
 #include "profiler.h"
 
 #include "internal/baseapplication.h"
-#include "internal/cryptographichash.h"
 #include "internal/process.h"
+
+#ifndef NO_QT_SUPPORT
+#include "internal/cryptographichash.h"
 #include "internal/systeminfo.h"
 #include "internal/tickerprovider.h"
+#else
+#include "internal/cryptographichashstd.h"
+#include "internal/tickerproviderstub.h"
+#endif
 
 #include "runtime.h"
 #include "async/processevents.h"
 
 #include "settings.h"
 
+#ifndef NO_QT_SUPPORT
 #include "api/internal/apiregister.h"
 #include "api/iapiregister.h"
 #include "api/logapi.h"
 #include "api/interactiveapi.h"
 #include "api/filesystemapi.h"
 #include "api/processapi.h"
+#endif
 
 #include "muse_framework_config.h"
 
@@ -108,16 +116,28 @@ void GlobalModule::registerExports()
     }
 
     m_configuration = std::make_shared<GlobalConfiguration>(iocContext());
-    m_systemInfo = std::make_shared<SystemInfo>();
-    m_tickerProvider = std::make_shared<TickerProvider>();
 
     ioc()->registerExport<IApplication>(moduleName(), m_application);
     ioc()->registerExport<IGlobalConfiguration>(moduleName(), m_configuration);
+    ioc()->registerExport<IProcess>(moduleName(), new Process());
+
+#ifndef NO_QT_SUPPORT
+    m_systemInfo = std::make_shared<SystemInfo>();
+    m_tickerProvider = std::make_shared<TickerProvider>();
     ioc()->registerExport<ISystemInfo>(moduleName(), m_systemInfo);
     ioc()->registerExport<ICryptographicHash>(moduleName(), new CryptographicHash());
-    ioc()->registerExport<IProcess>(moduleName(), new Process());
     ioc()->registerExport<ITickerProvider>(moduleName(), m_tickerProvider);
     ioc()->registerExport<api::IApiRegister>(moduleName(), new api::ApiRegister());
+#else
+    //! NOTE mscz_test: no ISystemInfo and no IApiRegister in the Qt-free
+    //! build. SystemInfo is QSysInfo and nothing we build asks for it; the API
+    //! register exists for the JS plugin layer, which needs QObject and
+    //! QMetaEnum. The hash and the ticker do have callers, so they get Qt-free
+    //! replacements.
+    m_tickerProvider = std::make_shared<TickerProviderStub>();
+    ioc()->registerExport<ICryptographicHash>(moduleName(), new CryptographicHashStd());
+    ioc()->registerExport<ITickerProvider>(moduleName(), m_tickerProvider);
+#endif
 
 #ifdef Q_OS_WASM
     ioc()->registerExport<IFileSystem>(moduleName(), new MemFileSystem());
@@ -137,6 +157,10 @@ void GlobalModule::registerExports()
 
 void GlobalModule::registerApi()
 {
+#ifdef NO_QT_SUPPORT
+    // No API register to put anything into.
+    return;
+#else
     using namespace muse::api;
 
     auto api = ioc()->resolve<IApiRegister>(moduleName());
@@ -148,6 +172,7 @@ void GlobalModule::registerApi()
 
         api->regGlobalEnum(moduleName(), QMetaEnum::fromType<InteractiveApi::ButtonCode>());
     }
+#endif
 }
 
 void GlobalModule::onPreInit(const IApplication::RunMode& mode)
