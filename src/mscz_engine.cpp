@@ -9,10 +9,12 @@
 #include <cmath>
 #include <iostream>
 
+#ifndef NO_QT_SUPPORT
 #include <QBuffer>
 #include <QByteArray>
 #include <QGuiApplication>
 #include <QImage>
+#endif
 
 #include "global/globalmodule.h"
 #include "global/modularity/ioc.h"
@@ -52,12 +54,17 @@ public:
 private:
     Runtime()
     {
+#ifndef NO_QT_SUPPORT
+        // Only the Qt-backed build needs an application object: the font
+        // provider and the raster painter are Qt's there. The Qt-free build
+        // uses the FreeType provider and paints only to SVG.
         if (!QGuiApplication::instance()) {
             static int argc = 1;
             static char arg0[] = "mscz_test";
             static char* argv[] = { arg0, nullptr };
             m_qapp = std::make_unique<QGuiApplication>(argc, argv);
         }
+#endif
 
         m_modules.emplace_back(std::make_unique<muse::draw::DrawModule>());
         m_modules.emplace_back(std::make_unique<mu::engraving::EngravingModule>());
@@ -119,7 +126,9 @@ private:
         m_globalModule.onDestroy();
     }
 
+#ifndef NO_QT_SUPPORT
     std::unique_ptr<QGuiApplication> m_qapp;
+#endif
     muse::GlobalModule m_globalModule;
     std::vector<std::unique_ptr<muse::modularity::IModuleSetup> > m_modules;
 };
@@ -282,6 +291,7 @@ bool Session::renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, SvgFonts
     return true;
 }
 
+#ifndef NO_QT_SUPPORT
 bool Session::renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const
 {
     if (dpi <= 0) {
@@ -341,5 +351,15 @@ bool Session::renderPage(int pageIndex, int dpi, PageImage& out, std::string& er
     out.data.assign(png.begin(), png.end());
     return true;
 }
+#else
+bool Session::renderPage(int, int, PageImage&, std::string& error) const
+{
+    // PNG output goes through QImage. The Qt-free build renders to SVG, which
+    // is what the browser wants anyway; this exists so the API shape does not
+    // change between builds.
+    error = "PNG rendering needs the Qt-backed build; use renderPageSvg.";
+    return false;
+}
+#endif
 
 } // namespace mscz

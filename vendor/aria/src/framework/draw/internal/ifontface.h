@@ -21,7 +21,12 @@
  */
 #pragma once
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+//! NOTE mscz_test: upstream guards the msdfgen-based glyphShape() with
+//! !MUSE_MODULE_DRAW_USE_QTTEXTDRAW, conflating two separate things: whether
+//! text is drawn through Qt, and whether msdfgen is available. msdfgen is
+//! commented out of the build, so turning Qt text drawing off made these fail
+//! to compile. Split into its own macro, which nothing defines.
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 #include <msdfgen.h>
 #endif
 
@@ -66,13 +71,13 @@ public:
     virtual FBBox glyphBbox(glyph_idx_t idx) const = 0;
     virtual f26dot6_t glyphAdvance(glyph_idx_t idx) const = 0;
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
     virtual const msdfgen::Shape& glyphShape(glyph_idx_t idx) const = 0;
 #endif
 };
 }
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 inline bool operator==(const msdfgen::Shape& s1, const msdfgen::Shape& s2)
 {
     if (s1.inverseYAxis != s2.inverseYAxis) {

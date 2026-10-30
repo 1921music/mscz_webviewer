@@ -31,10 +31,22 @@ list(PREPEND CMAKE_MODULE_PATH
 include(GetPaths)
 include(${MU_ROOT}/src/framework/cmake/MuseDeclareOptions.cmake)
 
-set(MUSE_QT_SUPPORT ON CACHE BOOL "" FORCE)
+# Deliberately not FORCE: Phase 2 turns this off from the command line, and a
+# forced cache entry would silently win over -DMUSE_QT_SUPPORT=OFF. Everything
+# below that we never want overridden does use FORCE.
+set(MUSE_QT_SUPPORT ON CACHE BOOL "Build the engine against Qt")
+
 set(MUSE_ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(MUSE_COMPILE_USE_PCH OFF CACHE BOOL "" FORCE)
 set(MUSE_COMPILE_USE_UNITY OFF CACHE BOOL "" FORCE)
+
+# Accessibility is a screen-reader bridge whose interfaces are Qt-typed
+# (QString, QRect, QVariant in the signatures), so it cannot come along into
+# the Qt-free build. Upstream already has the switch and 21 files guard
+# themselves with it.
+if (NOT MUSE_QT_SUPPORT)
+    set(ENGRAVING_NO_ACCESSIBILITY ON CACHE BOOL "" FORCE)
+endif()
 
 # Display only. Dropping playback also drops engraving's only dependency on the
 # mpe module, which is why mpe is not vendored at all.
@@ -59,14 +71,18 @@ include(SetupBuildEnvironment)
 include(GetPlatformInfo)
 include(${MU_ROOT}/src/framework/cmake/MuseSetupConfiguration.cmake)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Svg Qml Quick Widgets Network)
-qt_standard_project_setup()
+if (MUSE_QT_SUPPORT)
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Svg Qml Quick Widgets Network)
+    qt_standard_project_setup()
 
-# engraving embeds its fonts with qt_add_big_resources, whose generated .o files
-# are not -fPIC, so a shared libengraving.so fails to link. BUILD_SHARED_LIBS
-# alone does not do it: with QTP0003 at OLD, qt_add_library ignores it and
-# follows the flavour of the Qt build, and a distro Qt6 is shared.
-qt_policy(SET QTP0003 NEW)
+    # engraving embeds its fonts with qt_add_big_resources, whose generated .o
+    # files are not -fPIC, so a shared libengraving.so fails to link.
+    # BUILD_SHARED_LIBS alone does not do it: with QTP0003 at OLD,
+    # qt_add_library ignores it and follows the flavour of the Qt build, and a
+    # distro Qt6 is shared.
+    qt_policy(SET QTP0003 NEW)
+endif()
+
 set(BUILD_SHARED_LIBS OFF)
 
 add_subdirectory(${MU_ROOT}/src/framework/global global)

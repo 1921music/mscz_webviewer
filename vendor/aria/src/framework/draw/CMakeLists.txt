@@ -47,8 +47,6 @@ target_sources(muse_draw PRIVATE
     ipaintprovider.h
     bufferedpaintprovider.cpp
     bufferedpaintprovider.h
-    svgrenderer.cpp
-    svgrenderer.h
     ifontprovider.h
     iimageprovider.h
     fontmetrics.cpp
@@ -66,25 +64,38 @@ target_sources(muse_draw PRIVATE
     utils/drawdatapaint.h
 )
 
+# mscz_test: the Qt providers are split out from DRAW_NO_INTERNAL, which
+# upstream uses to mean "no internal providers at all". We want the FreeType
+# ones and the fonts database either way, and only the Qt-backed ones gated on
+# whether Qt is in the build.
 if (DRAW_NO_INTERNAL)
     target_compile_definitions(muse_draw PRIVATE DRAW_NO_INTERNAL DRAW_NO_QSVGRENDER)
 else()
+    if (MUSE_QT_SUPPORT)
+        target_sources(muse_draw PRIVATE
+            svgrenderer.cpp
+            svgrenderer.h
+            internal/qpainterprovider.cpp
+            internal/qpainterprovider.h
+            internal/qimageprovider.h
+            internal/qimageprovider.cpp
+            internal/qimagepainterprovider.cpp
+            internal/qimagepainterprovider.h
+            internal/fontproviderdispatcher.cpp
+            internal/fontproviderdispatcher.h
+            internal/qfontprovider.cpp
+            internal/qfontprovider.h
+        )
+    else()
+        target_compile_definitions(muse_draw PRIVATE DRAW_NO_QSVGRENDER)
+    endif()
+
     target_sources(muse_draw PRIVATE
-        internal/qpainterprovider.cpp
-        internal/qpainterprovider.h
-        internal/qimageprovider.h
-        internal/qimageprovider.cpp
-        internal/qimagepainterprovider.cpp
-        internal/qimagepainterprovider.h
-        internal/fontproviderdispatcher.cpp
-        internal/fontproviderdispatcher.h
-        internal/qfontprovider.cpp
-        internal/qfontprovider.h
         internal/fontsdatabase.cpp
         internal/fontsdatabase.h
     )
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR ANDROID)
+    if (MUSE_QT_SUPPORT AND (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR ANDROID))
         target_compile_definitions(muse_draw PRIVATE DRAW_QT_FONT_PROVIDER_ONLY)
     else()
         # fonts
@@ -107,7 +118,13 @@ else()
         include(cmake/SetupFreeType.cmake)
         include(cmake/SetupHarfBuzz.cmake)
 
-        target_compile_definitions(muse_draw PUBLIC MUSE_MODULE_DRAW_USE_QTTEXTDRAW)
+        # mscz_test: this makes text drawing and glyph shapes go through Qt,
+        # so it only applies when Qt is in the build. With it off, FontFaceFT
+        # also compiles its glyphShape(), which needs msdfgen -- hence the
+        # guard below rather than simply dropping the definition.
+        if (MUSE_QT_SUPPORT)
+            target_compile_definitions(muse_draw PUBLIC MUSE_MODULE_DRAW_USE_QTTEXTDRAW)
+        endif()
 
         target_link_libraries(muse_draw PRIVATE
             ${FREETYPE_LIBRARIES}

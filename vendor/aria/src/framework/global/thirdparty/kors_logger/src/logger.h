@@ -24,6 +24,7 @@ SOFTWARE.
 */
 #define KORS_LOGGER_H
 
+#include <memory>
 #include <string>
 #include <string_view>
 #include <thread>

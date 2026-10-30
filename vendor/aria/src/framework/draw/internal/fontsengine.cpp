@@ -21,7 +21,7 @@
  */
 #include "fontsengine.h"
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 #include <msdfgen.h>
 #include <ext/import-font.h>
 #endif
@@ -331,7 +331,7 @@ RectF FontsEngine::tightBoundingRect(const Font& f, const std::u32string& text) 
     return fromFBBox(rect, rf->pixelScale());
 }
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 static void generateSdf(GlyphImage& out, glyph_idx_t glyphIdx, const IFontFace* face)
 {
     struct Bounds
@@ -415,7 +415,7 @@ std::vector<GlyphImage> FontsEngine::render(const Font& f, const std::u32string&
 
     UNUSED(text);
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
     int pixelSize = rf->requireKey.pixelSize;
     double pixelScale = rf->pixelScale();
     double glyphTop = 0;

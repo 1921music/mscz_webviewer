@@ -30,7 +30,7 @@
 #include FT_TRUETYPE_TABLES_H
 #include <hb-ft.h>
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 #include <ext/import-font.h>
 #endif
 
@@ -303,7 +303,7 @@ f26dot6_t FontFaceFT::glyphAdvance(glyph_idx_t idx) const
     }
 }
 
-#ifndef MUSE_MODULE_DRAW_USE_QTTEXTDRAW
+#ifdef MUSE_MODULE_DRAW_USE_MSDFGEN
 const msdfgen::Shape& FontFaceFT::glyphShape(glyph_idx_t idx) const
 {
     static const msdfgen::Shape null;

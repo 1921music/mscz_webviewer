@@ -33,9 +33,12 @@ target_link_libraries(mscz_core PUBLIC
     muse::global
     muse::draw
     engraving
-    Qt6::Core
-    Qt6::Gui
 )
+
+if (MUSE_QT_SUPPORT)
+    # Only the PNG path and the application object need these.
+    target_link_libraries(mscz_core PUBLIC Qt6::Core Qt6::Gui)
+endif()
 
 add_executable(mscz_probe
     mscz_probe.cpp
