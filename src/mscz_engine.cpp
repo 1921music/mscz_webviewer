@@ -5,6 +5,8 @@
  */
 #include "mscz_engine.h"
 
+#include <algorithm>
+#include <cmath>
 #include <iostream>
 
 #include <QBuffer>
@@ -21,9 +23,11 @@
 #include "engraving/engravingmodule.h"
 #include "engraving/compat/mscxcompat.h"
 #include "engraving/compat/scoreaccess.h"
+#include "engraving/dom/engravingitem.h"
 #include "engraving/dom/instrtemplate.h"
 #include "engraving/dom/masterscore.h"
 #include "engraving/dom/mscore.h"
+#include "engraving/dom/page.h"
 #include "engraving/rendering/iscorerenderer.h"
 
 #include "mscz_app_stub.h"
@@ -184,6 +188,47 @@ std::unique_ptr<Session> Session::open(const std::string& scorePath, std::string
 int Session::pageCount() const
 {
     return m_impl->pageCount;
+}
+
+bool Session::layoutFingerprint(std::vector<std::string>& out, std::string& error) const
+{
+    out.clear();
+
+    const mu::engraving::Score* score = m_impl->masterScore.get();
+    if (!score) {
+        error = "The score is closed.";
+        return false;
+    }
+
+    const double unit = score->style().spatium() * 0.1;
+    if (unit <= 0.0) {
+        error = "The score has no usable spatium.";
+        return false;
+    }
+
+    auto rounded = [unit](const double value) {
+        return static_cast<long long>(std::llround(value / unit));
+    };
+
+    int pageNumber = 0;
+    for (const mu::engraving::Page* page : score->pages()) {
+        for (const mu::engraving::EngravingItem* item : page->elements()) {
+            // Time-tick anchors are drag guides left in the layout; nothing draws them.
+            if (!item || !item->visible() || item->isPage() || item->isTimeTickAnchor()) {
+                continue;
+            }
+
+            const mu::engraving::RectF rect = item->pageBoundingRect();
+            out.push_back(std::to_string(pageNumber) + " " + item->typeName()
+                          + " " + std::to_string(rounded(rect.left()))
+                          + " " + std::to_string(rounded(rect.top()))
+                          + " " + std::to_string(rounded(rect.width())));
+        }
+        ++pageNumber;
+    }
+
+    std::sort(out.begin(), out.end());
+    return true;
 }
 
 bool Session::renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const

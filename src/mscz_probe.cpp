@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "mscz_engine.h"
 
@@ -20,7 +21,9 @@ namespace {
 
 int usage()
 {
-    std::fprintf(stderr, "usage: mscz_probe [--dpi N] [--out DIR] <score.mscz|.mscx>\n");
+    std::fprintf(stderr,
+                 "usage: mscz_probe [--dpi N] [--out DIR] <score.mscz|.mscx>\n"
+                 "       mscz_probe --fingerprint <score.mscz|.mscx>\n");
     return 2;
 }
 
@@ -42,6 +45,7 @@ int main(int argc, char* argv[])
     int dpi = 144;
     std::string outDir = ".";
     std::string scorePath;
+    bool fingerprint = false;
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -49,6 +53,8 @@ int main(int argc, char* argv[])
             dpi = std::atoi(argv[++i]);
         } else if (std::strcmp(a, "--out") == 0 && i + 1 < argc) {
             outDir = argv[++i];
+        } else if (std::strcmp(a, "--fingerprint") == 0) {
+            fingerprint = true;
         } else if (a[0] == '-') {
             return usage();
         } else if (scorePath.empty()) {
@@ -67,6 +73,18 @@ int main(int argc, char* argv[])
     if (!session) {
         std::fprintf(stderr, "mscz_probe: %s\n", error.c_str());
         return 1;
+    }
+
+    if (fingerprint) {
+        std::vector<std::string> lines;
+        if (!session->layoutFingerprint(lines, error)) {
+            std::fprintf(stderr, "mscz_probe: %s\n", error.c_str());
+            return 1;
+        }
+        for (const std::string& line : lines) {
+            std::printf("%s\n", line.c_str());
+        }
+        return 0;
     }
 
     const int pages = session->pageCount();

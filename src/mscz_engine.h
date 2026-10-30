@@ -46,6 +46,16 @@ public:
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
+    //! Every laid-out element, one line per element
+    //! ("page type left top width" in tenths of a staff space), sorted.
+    //!
+    //! This is the regression check: it describes the layout without
+    //! describing how it was drawn, so it stays identical across changes to
+    //! the paint path, and moves when something perturbs layout -- which is
+    //! exactly what swapping the Qt font provider for the FreeType one risks.
+    //! Ported from aria's ScoreRenderSession::layoutFingerprint.
+    bool layoutFingerprint(std::vector<std::string>& out, std::string& error) const;
+
 private:
     class Impl;
 
