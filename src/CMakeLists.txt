@@ -4,6 +4,8 @@ add_library(mscz_core STATIC
     mscz_app_stub.h
     svgpaintprovider.cpp
     svgpaintprovider.h
+    glyphoutlines.cpp
+    glyphoutlines.h
 )
 
 target_include_directories(mscz_core PUBLIC
@@ -16,7 +18,10 @@ target_include_directories(mscz_core PUBLIC
     ${MU_ROOT}/src/engraving
 )
 
+find_package(Freetype REQUIRED)
+
 target_link_libraries(mscz_core PUBLIC
+    Freetype::Freetype
     muse::global
     muse::draw
     engraving

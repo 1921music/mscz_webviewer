@@ -232,7 +232,8 @@ bool Session::layoutFingerprint(std::vector<std::string>& out, std::string& erro
     return true;
 }
 
-bool Session::renderPageSvg(int pageIndex, int dpi, std::string& out, std::string& error) const
+bool Session::renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, std::string& out,
+                            std::string& error) const
 {
     out.clear();
 
@@ -262,7 +263,9 @@ bool Session::renderPageSvg(int pageIndex, int dpi, std::string& out, std::strin
     options.isMultiPage = false;
     options.isPrinting = true;
 
-    auto provider = std::make_shared<SvgPaintProvider>();
+    auto provider = std::make_shared<SvgPaintProvider>(
+        symbols == SvgSymbols::Path ? SvgPaintProvider::SymbolMode::Path
+        : SvgPaintProvider::SymbolMode::Font);
     {
         muse::draw::Painter painter(provider, "mscz_test_svg");
         renderer->paintScore(&painter, score, options);

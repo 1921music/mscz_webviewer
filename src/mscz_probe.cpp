@@ -47,6 +47,7 @@ int main(int argc, char* argv[])
     std::string scorePath;
     bool fingerprint = false;
     bool svg = false;
+    mscz::Session::SvgSymbols symbols = mscz::Session::SvgSymbols::Font;
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -58,6 +59,15 @@ int main(int argc, char* argv[])
             fingerprint = true;
         } else if (std::strcmp(a, "--svg") == 0) {
             svg = true;
+        } else if (std::strcmp(a, "--symbols") == 0 && i + 1 < argc) {
+            const char* mode = argv[++i];
+            if (std::strcmp(mode, "path") == 0) {
+                symbols = mscz::Session::SvgSymbols::Path;
+            } else if (std::strcmp(mode, "font") == 0) {
+                symbols = mscz::Session::SvgSymbols::Font;
+            } else {
+                return usage();
+            }
         } else if (a[0] == '-') {
             return usage();
         } else if (scorePath.empty()) {
@@ -98,7 +108,7 @@ int main(int argc, char* argv[])
 
         if (svg) {
             std::string doc;
-            if (!session->renderPageSvg(page, dpi, doc, error)) {
+            if (!session->renderPageSvg(page, dpi, symbols, doc, error)) {
                 std::fprintf(stderr, "mscz_probe: page %d: %s\n", page + 1, error.c_str());
                 return 1;
             }

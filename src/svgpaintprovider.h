@@ -5,11 +5,15 @@
  */
 #pragma once
 
+#include <map>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "draw/ipaintprovider.h"
+
+#include "glyphoutlines.h"
 
 namespace mscz {
 
@@ -39,7 +43,18 @@ namespace mscz {
 class SvgPaintProvider : public muse::draw::IPaintProvider
 {
 public:
-    SvgPaintProvider();
+    //! How drawSymbol is written out.
+    enum class SymbolMode {
+        //! <text> in the music font family. Smallest markup, and the text
+        //! stays text, but the reader has to have the font.
+        Font,
+        //! The glyph outline once in <defs>, referenced by <use>. Needs no
+        //! font at the far end, and matches the engine's own rendering
+        //! exactly, since the outline comes from the same file the metrics do.
+        Path,
+    };
+
+    explicit SvgPaintProvider(SymbolMode symbolMode = SymbolMode::Font);
     ~SvgPaintProvider() override;
 
     //! The SVG written so far. Valid once endTarget() has run.
@@ -137,9 +152,16 @@ private:
     //! its id.
     std::string ensureClipPath();
 
+    //! Emits a symbol as a <use> of a glyph path in <defs>, adding the path on
+    //! first sight. False if the glyph could not be read, so the caller can
+    //! fall back to <text>.
+    bool drawSymbolAsPath(const muse::PointF& point, char32_t ucs4Code);
+
     static std::string colorToHex(const muse::Color& color);
     static std::string escapeText(const muse::String& text);
     static std::string formatNumber(double value);
+
+    const SymbolMode m_symbolMode;
 
     bool m_active = false;
     std::string m_name;
@@ -154,6 +176,10 @@ private:
     std::ostringstream m_body;
     std::ostringstream m_defs;
     int m_nextClipId = 0;
+    GlyphOutlines m_glyphs;
+    //! Glyph id in <defs> by font family and code point, so each glyph is
+    //! defined once per document.
+    std::map<std::pair<std::string, char32_t>, std::string> m_glyphIds;
     int m_openObjectGroups = 0;
     bool m_stateGroupOpen = false;
     std::string m_stateGroupAttrs;

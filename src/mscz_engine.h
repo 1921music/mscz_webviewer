@@ -46,10 +46,19 @@ public:
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
-    //! Renders one page to an SVG document. `dpi` only sets the SVG's
-    //! intrinsic width and height; the coordinates themselves are resolution
-    //! independent.
-    bool renderPageSvg(int pageIndex, int dpi, std::string& out, std::string& error) const;
+    //! How symbols are written into the SVG.
+    enum class SvgSymbols {
+        //! <text> in the music font family: smaller, but the reader needs the
+        //! font.
+        Font,
+        //! Glyph outlines in <defs>, referenced by <use>: self-contained.
+        Path,
+    };
+
+    //! Renders one page to an SVG document. `dpi` sets the coordinate scale;
+    //! the result is vector either way.
+    bool renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, std::string& out,
+                       std::string& error) const;
 
     //! Every laid-out element, one line per element
     //! ("page type left top width" in tenths of a staff space), sorted.

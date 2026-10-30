@@ -46,7 +46,10 @@ const char* lineJoinName(PenJoinStyle style)
 
 namespace mscz {
 
-SvgPaintProvider::SvgPaintProvider() = default;
+SvgPaintProvider::SvgPaintProvider(SymbolMode symbolMode)
+    : m_symbolMode(symbolMode)
+{
+}
 SvgPaintProvider::~SvgPaintProvider() = default;
 
 std::string SvgPaintProvider::svg() const
@@ -70,6 +73,7 @@ void SvgPaintProvider::beginTarget(const std::string& name)
     m_stack.clear();
     m_state = State();
     m_nextClipId = 0;
+    m_glyphIds.clear();
     m_openObjectGroups = 0;
     m_stateGroupOpen = false;
     m_stateGroupAttrs.clear();
@@ -572,11 +576,65 @@ void SvgPaintProvider::drawTextWorkaround(const Font& f, const PointF& pos, cons
     m_state.font = saved;
 }
 
+bool SvgPaintProvider::drawSymbolAsPath(const PointF& point, char32_t ucs4Code)
+{
+    const GlyphOutlines::Glyph& glyph = m_glyphs.glyph(m_state.font, ucs4Code);
+    if (!glyph.valid) {
+        return false;
+    }
+    if (glyph.path.empty()) {
+        return true;    // a blank glyph; nothing to draw, but not a failure
+    }
+
+    const std::string family = m_state.font.family().id().toStdString();
+    const auto key = std::make_pair(family, ucs4Code);
+
+    auto known = m_glyphIds.find(key);
+    if (known == m_glyphIds.end()) {
+        char id[48];
+        std::snprintf(id, sizeof(id), "g%zu", m_glyphIds.size());
+        known = m_glyphIds.emplace(key, id).first;
+        m_defs << "<path id=\"" << id << "\" d=\"" << glyph.path << "\"/>\n";
+    }
+
+    // The path is in font units, so scale by size/em. The transforms compose
+    // left to right, so the painter's own transform has to come first.
+    const double size = m_state.font.pointSizeF() * kFontSizeScale;
+    const double scale = size / static_cast<double>(glyph.unitsPerEm);
+
+    // Fill comes from the pen, as it does for text.
+    const Pen& p = m_state.pen;
+    const Color colour = p.style() == PenStyle::NoPen ? m_state.brush.color() : p.color();
+
+    openStateGroup(std::string(" fill=\"") + colorToHex(colour) + "\"" + clipAttribute());
+
+    // One matrix rather than a transform list. The painter's transform, the
+    // position and the font-units-to-size scale compose into the same thing,
+    // and saying it once is a good deal shorter per <use> -- of which there are
+    // hundreds on a page. Transform::translate and ::scale pre-multiply in
+    // local space, which is the order an SVG transform list would apply them.
+    Transform m = m_state.transform;
+    m.translate(point.x(), point.y());
+    m.scale(scale, scale);
+
+    // The scale factors end up around 0.03, so formatNumber's two decimals
+    // would quantise them to nothing; the translations are in device units
+    // where two decimals is already far finer than a pixel.
+    char buf[96];
+    std::snprintf(buf, sizeof(buf), "matrix(%.6g %.6g %.6g %.6g %s %s)",
+                  m.m11(), m.m12(), m.m21(), m.m22(),
+                  formatNumber(m.dx()).c_str(), formatNumber(m.dy()).c_str());
+
+    m_body << "<use href=\"#" << known->second << "\" transform=\"" << buf << "\"/>";
+    return true;
+}
+
 void SvgPaintProvider::drawSymbol(const PointF& point, char32_t ucs4Code)
 {
-    // TODO Emit the glyph outline into <defs> and reference it with <use>, so
-    // the SVG does not need the music font. Until then this is a <text> with
-    // the music font family, like QPainterProvider does.
+    if (m_symbolMode == SymbolMode::Path && drawSymbolAsPath(point, ucs4Code)) {
+        return;
+    }
+    // Font mode, or the glyph could not be read.
     drawText(point, String::fromUcs4(&ucs4Code, 1));
 }
 
