@@ -70,7 +70,9 @@ void SvgPaintProvider::beginTarget(const std::string& name)
     m_stack.clear();
     m_state = State();
     m_nextClipId = 0;
-    m_openGroups = 0;
+    m_openObjectGroups = 0;
+    m_stateGroupOpen = false;
+    m_stateGroupAttrs.clear();
     m_svg.clear();
 }
 
@@ -80,9 +82,10 @@ void SvgPaintProvider::beforeEndTargetHook(Painter*)
 
 bool SvgPaintProvider::endTarget(bool)
 {
-    while (m_openGroups > 0) {
+    closeStateGroup();
+    while (m_openObjectGroups > 0) {
         m_body << "</g>\n";
-        --m_openGroups;
+        --m_openObjectGroups;
     }
 
     // The viewBox is the viewport, not the window. Painter::setWindow folds the
@@ -117,15 +120,17 @@ void SvgPaintProvider::beginObject(const std::string& name)
 {
     // Kept as a group so the output can be read against the score: the engine
     // names these after the element being drawn.
+    closeStateGroup();
     m_body << "<g data-object=\"" << name << "\">\n";
-    ++m_openGroups;
+    ++m_openObjectGroups;
 }
 
 void SvgPaintProvider::endObject()
 {
-    if (m_openGroups > 0) {
+    closeStateGroup();
+    if (m_openObjectGroups > 0) {
         m_body << "</g>\n";
-        --m_openGroups;
+        --m_openObjectGroups;
     }
 }
 
@@ -315,79 +320,150 @@ std::string SvgPaintProvider::ensureClipPath()
     return m_state.clipId;
 }
 
-void SvgPaintProvider::writeClipAttribute()
+std::string SvgPaintProvider::clipAttribute()
 {
     const std::string id = ensureClipPath();
-    if (!id.empty()) {
-        m_body << " clip-path=\"url(#" << id << ")\"";
+    if (id.empty()) {
+        return std::string();
     }
+    return " clip-path=\"url(#" + id + ")\"";
 }
 
-void SvgPaintProvider::writeTransformAttribute()
+std::string SvgPaintProvider::transformAttribute() const
 {
     const Transform& t = m_state.transform;
     // Transform::type() is private, so test the matrix directly.
     if (t.m11() == 1.0 && t.m12() == 0.0 && t.m21() == 0.0 && t.m22() == 1.0
         && t.dx() == 0.0 && t.dy() == 0.0) {
-        return;
+        return std::string();
     }
-    m_body << " transform=\"matrix("
-           << formatNumber(t.m11()) << " " << formatNumber(t.m12()) << " "
-           << formatNumber(t.m21()) << " " << formatNumber(t.m22()) << " "
-           << formatNumber(t.dx()) << " " << formatNumber(t.dy()) << ")\"";
+
+    std::ostringstream a;
+    // A pure scale-and-translate, which is what the view transform and most
+    // item transforms are, says the same thing in far fewer characters as
+    // translate()+scale() than as a full matrix().
+    if (t.m12() == 0.0 && t.m21() == 0.0) {
+        a << " transform=\"";
+        if (t.dx() != 0.0 || t.dy() != 0.0) {
+            a << "translate(" << formatNumber(t.dx()) << " " << formatNumber(t.dy()) << ")";
+        }
+        if (t.m11() != 1.0 || t.m22() != 1.0) {
+            if (t.m11() == t.m22()) {
+                a << "scale(" << formatNumber(t.m11()) << ")";
+            } else {
+                a << "scale(" << formatNumber(t.m11()) << " " << formatNumber(t.m22()) << ")";
+            }
+        }
+        a << "\"";
+        return a.str();
+    }
+
+    a << " transform=\"matrix("
+      << formatNumber(t.m11()) << " " << formatNumber(t.m12()) << " "
+      << formatNumber(t.m21()) << " " << formatNumber(t.m22()) << " "
+      << formatNumber(t.dx()) << " " << formatNumber(t.dy()) << ")\"";
+    return a.str();
 }
 
-void SvgPaintProvider::writeCommonAttributes(bool filled)
+std::string SvgPaintProvider::paintAttributes(bool filled)
 {
     const Pen& p = m_state.pen;
     const Brush& b = m_state.brush;
 
+    std::ostringstream a;
+
     if (filled && b.style() != BrushStyle::NoBrush) {
-        m_body << " fill=\"" << colorToHex(b.color()) << "\"";
+        a << " fill=\"" << colorToHex(b.color()) << "\"";
         if (b.color().alpha() != 255) {
-            m_body << " fill-opacity=\"" << formatNumber(b.color().alpha() / 255.0) << "\"";
+            a << " fill-opacity=\"" << formatNumber(b.color().alpha() / 255.0) << "\"";
         }
     } else {
-        m_body << " fill=\"none\"";
+        a << " fill=\"none\"";
     }
 
     if (p.style() == PenStyle::NoPen) {
-        m_body << " stroke=\"none\"";
+        a << " stroke=\"none\"";
     } else {
-        m_body << " stroke=\"" << colorToHex(p.color()) << "\""
-               << " stroke-width=\"" << formatNumber(p.widthF()) << "\"";
+        a << " stroke=\"" << colorToHex(p.color()) << "\""
+          << " stroke-width=\"" << formatNumber(p.widthF()) << "\"";
         if (p.color().alpha() != 255) {
-            m_body << " stroke-opacity=\"" << formatNumber(p.color().alpha() / 255.0) << "\"";
+            a << " stroke-opacity=\"" << formatNumber(p.color().alpha() / 255.0) << "\"";
         }
         if (p.capStyle() != PenCapStyle::SquareCap) {
-            m_body << " stroke-linecap=\"" << lineCapName(p.capStyle()) << "\"";
+            a << " stroke-linecap=\"" << lineCapName(p.capStyle()) << "\"";
         }
         if (p.joinStyle() != PenJoinStyle::BevelJoin) {
-            m_body << " stroke-linejoin=\"" << lineJoinName(p.joinStyle()) << "\"";
+            a << " stroke-linejoin=\"" << lineJoinName(p.joinStyle()) << "\"";
         }
         if (p.style() != PenStyle::SolidLine) {
             // Pen::dashPattern() already turns the named styles into numbers,
             // in units of the pen width, which is what SVG wants scaled by it.
             const std::vector<double> dashes = p.dashPattern();
             if (!dashes.empty()) {
-                m_body << " stroke-dasharray=\"";
+                a << " stroke-dasharray=\"";
                 for (size_t i = 0; i < dashes.size(); ++i) {
                     if (i) {
-                        m_body << ",";
+                        a << ",";
                     }
-                    m_body << formatNumber(dashes[i] * p.widthF());
+                    a << formatNumber(dashes[i] * p.widthF());
                 }
-                m_body << "\"";
+                a << "\"";
             }
         }
     }
 
     if (!m_state.antialiasing) {
-        m_body << " shape-rendering=\"crispEdges\"";
+        a << " shape-rendering=\"crispEdges\"";
     }
 
-    writeTransformAttribute();
-    writeClipAttribute();
+    // No transform here. Every item has its own, so folding it into the group
+    // key would give one group per element and defeat the grouping; it goes on
+    // the element instead.
+    a << clipAttribute();
+    return a.str();
+}
+
+std::string SvgPaintProvider::textAttributes()
+{
+    std::ostringstream a;
+    a << " font-family=\"" << escapeText(m_state.font.family().id()) << "\""
+      << " font-size=\"" << formatNumber(m_state.font.pointSizeF() * kFontSizeScale) << "\"";
+    if (m_state.font.bold()) {
+        a << " font-weight=\"bold\"";
+    }
+    if (m_state.font.italic()) {
+        a << " font-style=\"italic\"";
+    }
+
+    // Text takes the pen colour as its fill, the way QPainter draws it.
+    const Pen& p = m_state.pen;
+    a << " fill=\"" << colorToHex(p.style() == PenStyle::NoPen ? m_state.brush.color() : p.color()) << "\"";
+
+    a << clipAttribute();
+    return a.str();
+}
+
+void SvgPaintProvider::openStateGroup(const std::string& attrs)
+{
+    if (m_stateGroupOpen && m_stateGroupAttrs == attrs) {
+        return;
+    }
+    closeStateGroup();
+    if (attrs.empty()) {
+        return;
+    }
+    m_body << "<g" << attrs << ">";
+    m_stateGroupOpen = true;
+    m_stateGroupAttrs = attrs;
+}
+
+void SvgPaintProvider::closeStateGroup()
+{
+    if (m_stateGroupOpen) {
+        m_body << "</g>\n";
+        m_stateGroupOpen = false;
+        m_stateGroupAttrs.clear();
+    }
 }
 
 // --- drawing -----------------------------------------------------------------
@@ -429,12 +505,12 @@ void SvgPaintProvider::drawPath(const PainterPath& path)
         }
     }
 
+    openStateGroup(paintAttributes(true));
     m_body << "<path d=\"" << d.str() << "\"";
     if (path.fillRule() == PainterPath::FillRule::OddEvenFill) {
         m_body << " fill-rule=\"evenodd\"";
     }
-    writeCommonAttributes(true);
-    m_body << "/>\n";
+    m_body << transformAttribute() << "/>";
 }
 
 void SvgPaintProvider::drawPolygon(const PointF* points, size_t pointCount, PolygonMode mode)
@@ -452,12 +528,12 @@ void SvgPaintProvider::drawPolygon(const PointF* points, size_t pointCount, Poly
     }
 
     const bool polyline = (mode == PolygonMode::Polyline);
+    openStateGroup(paintAttributes(!polyline));
     m_body << (polyline ? "<polyline points=\"" : "<polygon points=\"") << pts.str() << "\"";
     if (mode == PolygonMode::OddEven) {
         m_body << " fill-rule=\"evenodd\"";
     }
-    writeCommonAttributes(!polyline);
-    m_body << "/>\n";
+    m_body << transformAttribute() << "/>";
 }
 
 void SvgPaintProvider::drawText(const PointF& point, const String& text)
@@ -468,23 +544,15 @@ void SvgPaintProvider::drawText(const PointF& point, const String& text)
 
     // Qt places the baseline at the given point, and so does SVG <text> by
     // default, so the position carries over unchanged.
-    m_body << "<text x=\"" << formatNumber(point.x()) << "\""
-           << " y=\"" << formatNumber(point.y()) << "\""
-           << " font-family=\"" << escapeText(m_state.font.family().id()) << "\""
-           << " font-size=\"" << formatNumber(m_state.font.pointSizeF() * kFontSizeScale) << "\"";
-    if (m_state.font.bold()) {
-        m_body << " font-weight=\"bold\"";
+    openStateGroup(textAttributes());
+    m_body << "<text";
+    if (point.x() != 0.0) {
+        m_body << " x=\"" << formatNumber(point.x()) << "\"";
     }
-    if (m_state.font.italic()) {
-        m_body << " font-style=\"italic\"";
+    if (point.y() != 0.0) {
+        m_body << " y=\"" << formatNumber(point.y()) << "\"";
     }
-
-    // Text takes the pen colour as its fill, the way QPainter draws it.
-    const Pen& p = m_state.pen;
-    m_body << " fill=\"" << colorToHex(p.style() == PenStyle::NoPen ? m_state.brush.color() : p.color()) << "\"";
-    writeTransformAttribute();
-    writeClipAttribute();
-    m_body << ">" << escapeText(text) << "</text>\n";
+    m_body << transformAttribute() << ">" << escapeText(text) << "</text>";
 }
 
 void SvgPaintProvider::drawText(const RectF& rect, int, const String& text)

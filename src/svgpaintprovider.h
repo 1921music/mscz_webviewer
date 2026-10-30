@@ -118,12 +118,21 @@ private:
         std::string clipId;
     };
 
-    //! Emits the stroke/fill/transform/clip attributes for the current state.
+    //! The stroke/fill/transform/clip attributes for the current state.
     //! `filled` says whether the primitive takes the brush as a fill: a path
     //! or polygon does, a polyline does not.
-    void writeCommonAttributes(bool filled);
-    void writeTransformAttribute();
-    void writeClipAttribute();
+    std::string paintAttributes(bool filled);
+    //! Attributes for a <text>: font, the pen colour as fill, transform, clip.
+    std::string textAttributes();
+    std::string transformAttribute() const;
+    std::string clipAttribute();
+
+    //! Opens a <g> carrying `attrs` unless one with exactly those attributes
+    //! is already open, so that runs of shapes sharing a transform, pen and
+    //! clip -- which is most of a page -- state them once instead of each
+    //! repeating five attributes.
+    void openStateGroup(const std::string& attrs);
+    void closeStateGroup();
     //! Registers a <clipPath> for the current clip rect if needed, returning
     //! its id.
     std::string ensureClipPath();
@@ -145,7 +154,9 @@ private:
     std::ostringstream m_body;
     std::ostringstream m_defs;
     int m_nextClipId = 0;
-    int m_openGroups = 0;
+    int m_openObjectGroups = 0;
+    bool m_stateGroupOpen = false;
+    std::string m_stateGroupAttrs;
 
     std::string m_svg;
 };
