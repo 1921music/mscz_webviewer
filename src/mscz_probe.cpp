@@ -46,6 +46,7 @@ int main(int argc, char* argv[])
     std::string outDir = ".";
     std::string scorePath;
     bool fingerprint = false;
+    bool svg = false;
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -55,6 +56,8 @@ int main(int argc, char* argv[])
             outDir = argv[++i];
         } else if (std::strcmp(a, "--fingerprint") == 0) {
             fingerprint = true;
+        } else if (std::strcmp(a, "--svg") == 0) {
+            svg = true;
         } else if (a[0] == '-') {
             return usage();
         } else if (scorePath.empty()) {
@@ -91,13 +94,31 @@ int main(int argc, char* argv[])
     std::printf("mscz_probe: %d page(s)\n", pages);
 
     for (int page = 0; page < pages; ++page) {
+        char name[64];
+
+        if (svg) {
+            std::string doc;
+            if (!session->renderPageSvg(page, dpi, doc, error)) {
+                std::fprintf(stderr, "mscz_probe: page %d: %s\n", page + 1, error.c_str());
+                return 1;
+            }
+            std::snprintf(name, sizeof(name), "/page-%03d.svg", page + 1);
+            const std::string path = outDir + name;
+            const std::vector<unsigned char> bytes(doc.begin(), doc.end());
+            if (!writeFile(path, bytes)) {
+                std::fprintf(stderr, "mscz_probe: could not write %s\n", path.c_str());
+                return 1;
+            }
+            std::printf("  %s  %zu bytes\n", path.c_str(), doc.size());
+            continue;
+        }
+
         mscz::PageImage image;
         if (!session->renderPage(page, dpi, image, error)) {
             std::fprintf(stderr, "mscz_probe: page %d: %s\n", page + 1, error.c_str());
             return 1;
         }
 
-        char name[64];
         std::snprintf(name, sizeof(name), "/page-%03d.png", page + 1);
         const std::string path = outDir + name;
         if (!writeFile(path, image.data)) {

@@ -2,6 +2,8 @@ add_library(mscz_core STATIC
     mscz_engine.cpp
     mscz_engine.h
     mscz_app_stub.h
+    svgpaintprovider.cpp
+    svgpaintprovider.h
 )
 
 target_include_directories(mscz_core PUBLIC

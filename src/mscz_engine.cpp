@@ -31,6 +31,7 @@
 #include "engraving/rendering/iscorerenderer.h"
 
 #include "mscz_app_stub.h"
+#include "svgpaintprovider.h"
 
 namespace {
 
@@ -228,6 +229,51 @@ bool Session::layoutFingerprint(std::vector<std::string>& out, std::string& erro
     }
 
     std::sort(out.begin(), out.end());
+    return true;
+}
+
+bool Session::renderPageSvg(int pageIndex, int dpi, std::string& out, std::string& error) const
+{
+    out.clear();
+
+    if (dpi <= 0) {
+        error = "The DPI must be positive.";
+        return false;
+    }
+    if (pageIndex < 0 || pageIndex >= m_impl->pageCount) {
+        error = "The requested page is outside the score.";
+        return false;
+    }
+
+    mu::engraving::rendering::IScoreRenderer* renderer = m_impl->renderer();
+    if (!renderer) {
+        error = "The score renderer is unavailable.";
+        return false;
+    }
+
+    mu::engraving::Score* score = m_impl->masterScore.get();
+
+    mu::engraving::rendering::IScoreRenderer::ScorePaintOptions options;
+    options.fromPage = pageIndex;
+    options.toPage = pageIndex;
+    options.deviceDpi = dpi;
+    options.printPageBackground = false;
+    options.isSetViewport = true;
+    options.isMultiPage = false;
+    options.isPrinting = true;
+
+    auto provider = std::make_shared<SvgPaintProvider>();
+    {
+        muse::draw::Painter painter(provider, "mscz_test_svg");
+        renderer->paintScore(&painter, score, options);
+        painter.endDraw();
+    }
+
+    out = provider->svg();
+    if (out.empty()) {
+        error = "The SVG provider produced nothing.";
+        return false;
+    }
     return true;
 }
 

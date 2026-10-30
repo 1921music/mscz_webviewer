@@ -46,6 +46,11 @@ public:
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
+    //! Renders one page to an SVG document. `dpi` only sets the SVG's
+    //! intrinsic width and height; the coordinates themselves are resolution
+    //! independent.
+    bool renderPageSvg(int pageIndex, int dpi, std::string& out, std::string& error) const;
+
     //! Every laid-out element, one line per element
     //! ("page type left top width" in tenths of a staff space), sorted.
     //!
