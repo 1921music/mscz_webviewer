@@ -46,7 +46,9 @@ public:
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
-    //! How symbols are written into the SVG.
+    //! How symbols are written into the SVG. Path is the default: it keeps a
+    //! text selection in the page from dragging the notation along with it,
+    //! and needs no music font at the far end.
     enum class SvgSymbols {
         //! <text> in the music font family: smaller, but the reader needs the
         //! font.

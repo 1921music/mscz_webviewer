@@ -47,8 +47,11 @@ int main(int argc, char* argv[])
     std::string scorePath;
     bool fingerprint = false;
     bool svg = false;
-    mscz::Session::SvgSymbols symbols = mscz::Session::SvgSymbols::Font;
-    mscz::Session::SvgFonts fonts = mscz::Session::SvgFonts::Reference;
+    // Default to the self-contained pair. Embedding costs about 13KB brotli
+    // per page, and symbols as paths keep a text selection from dragging the
+    // notation along with it.
+    mscz::Session::SvgSymbols symbols = mscz::Session::SvgSymbols::Path;
+    mscz::Session::SvgFonts fonts = mscz::Session::SvgFonts::EmbedSubset;
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -62,6 +65,8 @@ int main(int argc, char* argv[])
             svg = true;
         } else if (std::strcmp(a, "--embed-fonts") == 0) {
             fonts = mscz::Session::SvgFonts::EmbedSubset;
+        } else if (std::strcmp(a, "--reference-fonts") == 0) {
+            fonts = mscz::Session::SvgFonts::Reference;
         } else if (std::strcmp(a, "--symbols") == 0 && i + 1 < argc) {
             const char* mode = argv[++i];
             if (std::strcmp(mode, "path") == 0) {
