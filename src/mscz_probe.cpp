@@ -48,6 +48,7 @@ int main(int argc, char* argv[])
     bool fingerprint = false;
     bool svg = false;
     mscz::Session::SvgSymbols symbols = mscz::Session::SvgSymbols::Font;
+    mscz::Session::SvgFonts fonts = mscz::Session::SvgFonts::Reference;
 
     for (int i = 1; i < argc; ++i) {
         const char* a = argv[i];
@@ -59,6 +60,8 @@ int main(int argc, char* argv[])
             fingerprint = true;
         } else if (std::strcmp(a, "--svg") == 0) {
             svg = true;
+        } else if (std::strcmp(a, "--embed-fonts") == 0) {
+            fonts = mscz::Session::SvgFonts::EmbedSubset;
         } else if (std::strcmp(a, "--symbols") == 0 && i + 1 < argc) {
             const char* mode = argv[++i];
             if (std::strcmp(mode, "path") == 0) {
@@ -108,7 +111,7 @@ int main(int argc, char* argv[])
 
         if (svg) {
             std::string doc;
-            if (!session->renderPageSvg(page, dpi, symbols, doc, error)) {
+            if (!session->renderPageSvg(page, dpi, symbols, fonts, doc, error)) {
                 std::fprintf(stderr, "mscz_probe: page %d: %s\n", page + 1, error.c_str());
                 return 1;
             }

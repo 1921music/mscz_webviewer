@@ -55,10 +55,18 @@ public:
         Path,
     };
 
+    //! Whether the SVG carries the fonts it needs.
+    enum class SvgFonts {
+        //! Name them and let the reader resolve them.
+        Reference,
+        //! Embed a subset of each, cut to the code points the page uses.
+        EmbedSubset,
+    };
+
     //! Renders one page to an SVG document. `dpi` sets the coordinate scale;
     //! the result is vector either way.
-    bool renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, std::string& out,
-                       std::string& error) const;
+    bool renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, SvgFonts fonts,
+                       std::string& out, std::string& error) const;
 
     //! Every laid-out element, one line per element
     //! ("page type left top width" in tenths of a staff space), sorted.

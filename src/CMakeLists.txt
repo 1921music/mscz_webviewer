@@ -6,6 +6,8 @@ add_library(mscz_core STATIC
     svgpaintprovider.h
     glyphoutlines.cpp
     glyphoutlines.h
+    fontsubset.cpp
+    fontsubset.h
 )
 
 target_include_directories(mscz_core PUBLIC
@@ -20,8 +22,14 @@ target_include_directories(mscz_core PUBLIC
 
 find_package(Freetype REQUIRED)
 
+# hb-subset, for cutting fonts down to the glyphs a page uses. The wasm build
+# will use the vendored HarfBuzz amalgam instead; see vendor/thirdparty.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(HARFBUZZ_SUBSET REQUIRED IMPORTED_TARGET harfbuzz-subset)
+
 target_link_libraries(mscz_core PUBLIC
     Freetype::Freetype
+    PkgConfig::HARFBUZZ_SUBSET
     muse::global
     muse::draw
     engraving

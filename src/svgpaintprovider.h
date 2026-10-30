@@ -6,6 +6,7 @@
 #pragma once
 
 #include <map>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -13,6 +14,7 @@
 
 #include "draw/ipaintprovider.h"
 
+#include "fontsubset.h"
 #include "glyphoutlines.h"
 
 namespace mscz {
@@ -54,7 +56,18 @@ public:
         Path,
     };
 
-    explicit SvgPaintProvider(SymbolMode symbolMode = SymbolMode::Font);
+    //! Whether the fonts the page uses are embedded in the document.
+    enum class FontMode {
+        //! Name the families and leave it to the reader. Smallest, and right
+        //! when the host page already declares them.
+        Reference,
+        //! Embed a subset of each family, cut to the code points this page
+        //! uses, as a CSS @font-face data URI. Makes the document stand alone.
+        EmbedSubset,
+    };
+
+    explicit SvgPaintProvider(SymbolMode symbolMode = SymbolMode::Font,
+                              FontMode fontMode = FontMode::Reference);
     ~SvgPaintProvider() override;
 
     //! The SVG written so far. Valid once endTarget() has run.
@@ -157,11 +170,19 @@ private:
     //! fall back to <text>.
     bool drawSymbolAsPath(const muse::PointF& point, char32_t ucs4Code);
 
+    //! Notes that this page needs these code points of the current font, so
+    //! endTarget can subset it.
+    void noteUsedGlyphs(const muse::String& text);
+    //! The <style> block with an @font-face per family used, each carrying its
+    //! subset. Empty in Reference mode.
+    std::string fontFaceStyle();
+
     static std::string colorToHex(const muse::Color& color);
     static std::string escapeText(const muse::String& text);
     static std::string formatNumber(double value);
 
     const SymbolMode m_symbolMode;
+    const FontMode m_fontMode;
 
     bool m_active = false;
     std::string m_name;
@@ -177,6 +198,9 @@ private:
     std::ostringstream m_defs;
     int m_nextClipId = 0;
     GlyphOutlines m_glyphs;
+    FontSubset m_subsetter;
+    //! Code points drawn per face, collected while painting.
+    std::map<FontSubset::FaceKey, std::set<char32_t> > m_usedGlyphs;
     //! Glyph id in <defs> by font family and code point, so each glyph is
     //! defined once per document.
     std::map<std::pair<std::string, char32_t>, std::string> m_glyphIds;

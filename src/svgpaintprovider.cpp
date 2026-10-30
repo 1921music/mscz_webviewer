@@ -46,8 +46,8 @@ const char* lineJoinName(PenJoinStyle style)
 
 namespace mscz {
 
-SvgPaintProvider::SvgPaintProvider(SymbolMode symbolMode)
-    : m_symbolMode(symbolMode)
+SvgPaintProvider::SvgPaintProvider(SymbolMode symbolMode, FontMode fontMode)
+    : m_symbolMode(symbolMode), m_fontMode(fontMode)
 {
 }
 SvgPaintProvider::~SvgPaintProvider() = default;
@@ -74,6 +74,7 @@ void SvgPaintProvider::beginTarget(const std::string& name)
     m_state = State();
     m_nextClipId = 0;
     m_glyphIds.clear();
+    m_usedGlyphs.clear();
     m_openObjectGroups = 0;
     m_stateGroupOpen = false;
     m_stateGroupAttrs.clear();
@@ -106,6 +107,13 @@ bool SvgPaintProvider::endTarget(bool)
         // No width or height: the viewBox alone makes the document scale to
         // whatever box a viewer puts it in, which is what a web viewer wants.
         << " viewBox=\"0 0 " << formatNumber(viewBoxW) << " " << formatNumber(viewBoxH) << "\">\n";
+
+    // Subsetting happens here rather than as the glyphs are drawn, because it
+    // needs the complete set of code points the page turned out to use.
+    const std::string style = fontFaceStyle();
+    if (!style.empty()) {
+        out << style;
+    }
 
     const std::string defs = m_defs.str();
     if (!defs.empty()) {
@@ -470,6 +478,50 @@ void SvgPaintProvider::closeStateGroup()
     }
 }
 
+void SvgPaintProvider::noteUsedGlyphs(const String& text)
+{
+    if (m_fontMode != FontMode::EmbedSubset || text.empty()) {
+        return;
+    }
+    std::set<char32_t>& used = m_usedGlyphs[FontSubset::keyFor(m_state.font)];
+    const std::u32string u32 = text.toStdU32String();
+    used.insert(u32.begin(), u32.end());
+}
+
+std::string SvgPaintProvider::fontFaceStyle()
+{
+    if (m_fontMode != FontMode::EmbedSubset || m_usedGlyphs.empty()) {
+        return std::string();
+    }
+
+    std::ostringstream css;
+    for (const auto& [key, codepoints] : m_usedGlyphs) {
+        const std::vector<std::uint8_t> font = m_subsetter.subset(key, codepoints);
+        if (font.empty()) {
+            // A family we do not ship. Nothing to embed; the reader will
+            // substitute, exactly as it would without this block.
+            continue;
+        }
+
+        css << "@font-face{font-family:\"" << key.family << "\";";
+        if (key.bold) {
+            css << "font-weight:bold;";
+        }
+        if (key.italic) {
+            css << "font-style:italic;";
+        }
+        css << "src:url(data:font/" << (FontSubset::formatHint(font) == "opentype" ? "otf" : "ttf")
+            << ";base64," << FontSubset::base64(font) << ") format(\""
+            << FontSubset::formatHint(font) << "\")}\n";
+    }
+
+    const std::string body = css.str();
+    if (body.empty()) {
+        return std::string();
+    }
+    return "<style>\n" + body + "</style>\n";
+}
+
 // --- drawing -----------------------------------------------------------------
 
 void SvgPaintProvider::drawPath(const PainterPath& path)
@@ -545,6 +597,8 @@ void SvgPaintProvider::drawText(const PointF& point, const String& text)
     if (text.empty()) {
         return;
     }
+
+    noteUsedGlyphs(text);
 
     // Qt places the baseline at the given point, and so does SVG <text> by
     // default, so the position carries over unchanged.
