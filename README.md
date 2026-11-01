@@ -356,6 +356,24 @@ LTO を有効にしたままでは関数が融合されて「どの merged body 
 `types/symnames.cpp` 722KB、`editing/edit.cpp` 664KB、`dom/chordlist.cpp` 653KB、
 `style/styledef.cpp` 566KB。
 
+### engraving の 68% は妥当か（ライブラリが混ざっていないか）
+
+混ざっていない。`engraving` 配下に third-party は無く（`thirdparty` は framework 側だけ）、
+中身は全て MuseScore 自身のコード。行数と出力の比:
+
+| | 行数 | |
+|---|---|---|
+| engraving のビルド対象 `.cpp` | 239,385 | 333ファイル |
+| 同 `.h` | 52,687 | |
+| **計** | **292,072** | |
+
+出力 4,872KB に対して **16.7 バイト/行**（`.cpp` だけで割れば 20.3）。
+対照として HarfBuzz は `harfbuzz-subset.cc` が引き込む 44,055 行に対し 916KB で
+**20.8 バイト/行** —— ほぼ同じ密度。
+
+**つまりコード生成が膨らんでいるのではなく、29万行の譜面組版コードが本当にそれだけある。**
+`-Oz` としては 16〜20 バイト/行は普通か、やや良いほうの数字。
+
 ### どこから手を付けるべきか
 
 1. **HarfBuzz のサブセッタ — 出力 916KB、バイナリの 13% がこれ 1 ファイル。**
@@ -366,8 +384,30 @@ LTO を有効にしたままでは関数が融合されて「どの merged body 
    `edit.cpp` 664KB ＋ `cmd.cpp` 468KB。参照を切る作業が要る
 3. **旧フォーマット読み込み（read114/read206/compat）＋ `rw/write` — 4.7%。**
    対応フォーマットを決めれば落ちる
-4. **`types/symnames.cpp` 722KB と `typesconv.cpp` 786KB。** どちらも巨大な静的テーブル。
-   `TranslatableString` を空にして一部は消えたが、まだ大きい
+4. **`types/symnames.cpp` 722KB と `typesconv.cpp` 786KB** — 中身は下記。
+   必須の表と UI 専用の表が並んでいるが、**UI 側はもう `TranslatableString` を
+   空にして回収済み**で、残っているのは必須部分。ここはもう取るものが少ない
+
+### 4番（symnames / typesconv）は何で、必須なのか
+
+**`types/symnames.cpp`（6,532行）は 2 本の並んだ配列**で、要素数はどちらも
+`SymId::lastSym + 1` = 約 3,061（SMuFL の全シンボル）:
+
+| 配列 | 中身 | 必須か |
+|---|---|---|
+| `s_symNames` | `constexpr` な `AsciiStringView` の配列。`"noteheadBlack"` 等の SMuFL 名 | **必須。** 譜面が `<sym>noteheadBlack</sym>` と名前で書いてくるので読むのに要るし、SMuFL メタデータからグリフを引くのにも要る。`constexpr` なのでポインタ表＋文字列バイトだけ |
+| `s_symUserNames` | `TranslatableString` の配列。`"11 medium diesis down, 1°[17 31] 2°46 down, 1/4-tone down"` のような人間向け説明 | **不要。** インスペクタ・パレット・スクリーンリーダ専用 |
+
+**`types/typesconv.cpp`（3,399行、テーブル 60 本）は enum ↔ XML 文字列の変換表。**
+`"left"` `"center"` のような XML の属性値と enum を往復させるもので、
+**`.mscx` を読むのに必須**。各要素が `AsciiStringView xml`（必須）＋
+`TranslatableString` 2 個（UI 専用）という構造。
+
+`style/styledef.cpp`（2,173行）はスタイルプロパティの定義表で、これも必須。
+
+**だから 4 番は「消せる表」ではなく「必須の表と UI 専用の表が同じ構造体に同居している」
+という形の問題**で、UI 専用のほうは `MSCZ_NO_TRANSLATABLE_STRINGS` で既に回収した。
+残りを削るには表の表現自体を変えることになり、上流との差分が大きくなる。
 
 FreeType（4.4%）の `TT_RunIns` や gzip を削る話は、この順位では後回しでよい。
 
@@ -464,6 +504,21 @@ UTF-16/32 側には utfcpp に相当物が無いので、孤立サロゲート�
 **brotli では 30KB（2.3%）。** raw の 114KB に対して圧縮後が小さいのは、消えたのが
 反復的な初期化コードだからで、圧縮が元々よく効いていた部分。
 レイアウトは両デモ譜で 0 差分、1 ページ目の SVG もバイト一致。
+
+**さらに踏み込んで失敗した記録。** 上記の変更ではメンバ `String str` を残しているので、
+`String()` の `m_data = std::make_shared<std::u16string>()` が**要素ごとに 1 回**走ったまま
+（`symnames.cpp` の配列だけで 3,061 要素）。これを消せば大きいと考えて、マクロ時には
+メンバごと持たない別クラス定義にしてみた。結果:
+
+| | raw | brotli | 起動 |
+|---|---|---|---|
+| メンバを残す（採用） | 4,464KB | 1,290KB | 180〜223ms |
+| メンバも消す | 4,487KB（+23KB） | 1,287KB（−3.25KB） | 180〜223ms |
+
+**brotli で 3.25KB しか減らず、起動時間はノイズ以下、raw はむしろ増えた。**
+3,000 回のヒープ確保が高いという読みが外れていた（コンパイラは配列初期化を
+小さなループにまとめるし、小さい確保 3,000 回は 1ms に届かない）。
+クラスを二重定義する保守コストに見合わないので**戻した**。やり直さないこと。
 
 ### 次に削れる見込みのあるもの
 
