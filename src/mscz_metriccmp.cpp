@@ -119,6 +119,13 @@ int main(int argc, char* argv[])
         { "Edwin", Font::Type::Text, 10.0, "I" },
         { "Edwin", Font::Type::Text, 24.0, "AMAZING GRACE" },
         { "Edwin", Font::Type::Text, 7.5, "wretch" },
+        // The lyric syllables from the demo score, whose boxes came out about
+        // 12% narrow. tightBoundingRect is what sets a lyric's bbox.
+        { "Edwin", Font::Type::Text, 10.0, "A" },
+        { "Edwin", Font::Type::Text, 10.0, "ma" },
+        { "Edwin", Font::Type::Text, 10.0, "zing" },
+        { "Edwin", Font::Type::Text, 10.0, "grace" },
+        { "Edwin", Font::Type::Text, 10.0, "sound" },
         { "Leland", Font::Type::MusicSymbol, 10.0, "\xEE\x82\xA4" },   // U+E0A4 notehead
         { "Leland", Font::Type::MusicSymbol, 20.0, "\xEE\x81\x90" },   // U+E050 treble clef
         { "Leland Text", Font::Type::MusicSymbolText, 10.0, "\xEE\x82\xA4" },

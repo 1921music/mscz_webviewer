@@ -37,6 +37,11 @@
 #include "mscz_app_stub.h"
 #include "svgpaintprovider.h"
 
+#ifdef NO_QT_SUPPORT
+#include "compatfontprovider.h"
+#include "draw/ifontprovider.h"
+#endif
+
 namespace {
 
 constexpr muse::IApplication::RunMode kRunMode = muse::IApplication::RunMode::ConsoleApp;
@@ -84,6 +89,17 @@ private:
         }
         muse::modularity::globalIoc()->registerExport<muse::io::IFileSystem>(
             "mscz_test", new mscz::HostFileSystem(g_resources));
+
+#ifdef NO_QT_SUPPORT
+        //! NOTE Registered before the draw module, so this wins over the
+        //! FreeType provider that module would otherwise install. That one
+        //! converts point size with muse::draw::DPI (360) and has none of
+        //! QFontProvider's conventions, which is what moved almost every
+        //! element on the page. CompatFontProvider answers as QFontProvider
+        //! did, so the layout the engine was written for is preserved.
+        muse::modularity::globalIoc()->registerExport<muse::draw::IFontProvider>(
+            "mscz_test", std::make_shared<mscz::CompatFontProvider>());
+#endif
 
         m_globalModule.registerResources();
         m_globalModule.registerExports();
