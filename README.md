@@ -142,6 +142,39 @@ AGPL が関わるのは podium に組み込む段階だけ。詳細は後述の�
 歌詞は1音節1ランなので影響は小さく、長いランほど目立つ。したがってメトリクス互換
 フォントの価値は残るが、優先度は一般の文書レンダラより低い。
 
+### Phase 2 の実測結果（2026-11-01）
+
+`QFontProvider` の規約を FreeType に移植（`src/compatfontprovider.cpp`）した結果:
+
+| スコア | 要素数 | 移植前 | 移植後 |
+|---|---|---|---|
+| goldberg（同梱フォントのみ） | 60,232 | 93% 移動 | **3%** |
+| Amazing_grace（未同梱フォント指定） | 1,013 | 99% 移動 | 83% |
+
+**残差はフォント置換の差であって、メトリクス移植のバグではない。** この開発機で
+fontconfig が見えるのは11ファミリだけで、スコアが要求する `Times New Roman` も
+`FreeSerif` も無い。
+
+| 要求 | Qt の解決 | 我々の解決 |
+|---|---|---|
+| Edwin / Leland | 同名（MuseScore が `QFontDatabase` に登録） | 同じ ✓ |
+| Times New Roman | **DejaVu Serif**（fontconfig 経由） | Edwin（既定） |
+| FreeSerif | **DejaVu Serif** | Edwin |
+
+`Times New Roman` の `horizontalAdvance` は Qt/我々で 1.0989 倍、`xHeight` は 1.1178 倍。
+歌詞幅の差（63 対 55 = 1.145）と同オーダーで、**別フォントが使われている**ことの帰結。
+
+**したがって Amazing_grace の 83% を Qt ベースラインに寄せてはいけない。**
+それは開発機の fontconfig の偶然に合わせ込むことになる（Windows なら本物の
+Times New Roman が見つかり、別の答えになる）。我々の決定論的フォールバックのほうが
+環境に依らない点で望ましい。
+
+goldberg の残り 3% も同じで、筆頭の `MeasureNumber` 1048件は `FreeSerif` 指定。
+差は1単位（0.1譜表スペース）レベルで、`Note` は完全一致している。
+
+**Phase 2 の達成基準は「同梱フォントだけを使うスコアで一致すること」**とする。
+未同梱フォントの扱いは、下記のフォント解決方針の話に帰着する。
+
 ### 本当の問題は解決経路が2本あること
 
 - レイアウトのメトリクス → Qt の `QFontProvider`

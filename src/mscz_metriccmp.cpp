@@ -126,6 +126,14 @@ int main(int argc, char* argv[])
         { "Edwin", Font::Type::Text, 10.0, "zing" },
         { "Edwin", Font::Type::Text, 10.0, "grace" },
         { "Edwin", Font::Type::Text, 10.0, "sound" },
+        // The demo score asks for these two, and neither is shipped. Qt
+        // resolves a name it does not have through fontconfig; the fonts
+        // database falls back to its default. If they land on different fonts
+        // the advances differ, and that is a substitution difference rather
+        // than a metric one.
+        { "Times New Roman", Font::Type::Text, 10.0, "zing" },
+        { "Times New Roman", Font::Type::Text, 10.0, "sound" },
+        { "FreeSerif", Font::Type::Text, 10.0, "7" },
         { "Leland", Font::Type::MusicSymbol, 10.0, "\xEE\x82\xA4" },   // U+E0A4 notehead
         { "Leland", Font::Type::MusicSymbol, 20.0, "\xEE\x81\x90" },   // U+E050 treble clef
         { "Leland Text", Font::Type::MusicSymbolText, 10.0, "\xEE\x82\xA4" },
