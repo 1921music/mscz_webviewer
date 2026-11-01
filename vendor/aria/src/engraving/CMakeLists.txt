@@ -325,6 +325,15 @@ else()
     )
 endif()
 
+if (MUSE_QT_SUPPORT AND NOT ENGRAVING_NO_INTERNAL)
+    # mscz_test: the clipboard adapter wraps QMimeData, and nothing else in a
+    # display-only build references it.
+    target_sources(engraving PRIVATE
+        internal/qmimedataadapter.cpp
+        internal/qmimedataadapter.h
+    )
+endif()
+
 if (ENGRAVING_NO_INTERNAL)
     target_compile_definitions(engraving PUBLIC ENGRAVING_NO_INTERNAL ENGRAVING_NO_INTERACTIVE ENGRAVING_NO_API)
 else()
@@ -336,8 +345,6 @@ else()
     target_sources(engraving PRIVATE
         internal/engravingconfiguration.cpp
         internal/engravingconfiguration.h
-        internal/qmimedataadapter.cpp
-        internal/qmimedataadapter.h
         internal/engravingfontsprovider.cpp
         internal/engravingfontsprovider.h
         internal/engravingfont.cpp

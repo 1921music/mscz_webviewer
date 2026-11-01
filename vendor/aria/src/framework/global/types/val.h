@@ -29,6 +29,7 @@
 #include <map>
 
 #include "io/path.h"
+#include "types/color.h"
 
 #ifndef NO_QT_SUPPORT
 #include <QString>
@@ -52,9 +53,8 @@ public:
         String,
         List,
         Map,
-#ifndef NO_QT_SUPPORT
+        //! mscz_test: was Qt-only, because only QColor could make or read one.
         Color
-#endif
     };
 
     Val() = default;
@@ -67,6 +67,8 @@ public:
     explicit Val(const io::path_t& path);
     explicit Val(const ValList& list);
     explicit Val(const ValMap& map);
+    //! mscz_test: Type::Color existed but only QColor could make or read one.
+    explicit Val(const Color& color);
 
     template<class E, typename = std::enable_if_t<std::is_enum_v<E> > >
     explicit Val(E val)
@@ -85,6 +87,7 @@ public:
     float toFloat() const;
     std::string toString() const;
     io::path_t toPath() const;
+    Color toColor() const;
     ValList toList() const;
     ValMap toMap() const;
 

@@ -250,11 +250,20 @@ bool Val::operator <(const Val& v) const
     case Type::String: return toString() < v.toString();
     case Type::List: return toList() < v.toList();
     case Type::Map: return toMap() < v.toMap();
-#ifndef NO_QT_SUPPORT
     case Type::Color: return toString() < v.toString();
-#endif
     }
     return false;
+}
+
+//! mscz_test: Type::Color existed but only QColor could make or read one, so
+//! these are the Qt-free way in and out. A Color Val is its "#rrggbb" string,
+//! which is what the Qt pair stored too, so the two agree.
+Val::Val(const Color& color)
+    : m_val(color.toString()), m_type(Type::Color) {}
+
+Color Val::toColor() const
+{
+    return Color::fromString(toString());
 }
 
 #ifndef NO_QT_SUPPORT

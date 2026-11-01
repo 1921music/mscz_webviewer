@@ -77,9 +77,23 @@ protected:
     virtual bool doOpen(OpenMode m) = 0;
     virtual void doClose() {}
     virtual size_t dataSize() const = 0;
-    virtual const uint8_t* rawData() const = 0;
     virtual bool resizeData(size_t size) = 0;
     virtual size_t writeData(const uint8_t* data, size_t len) = 0;
+
+    //! mscz_test: rawData() is what forces a device to hold its whole content
+    //! in memory, and it used to be the only way to read. A device that can
+    //! seek and read a range instead -- a file on disk, a byte range over the
+    //! network -- overrides readData() and returns nullptr from rawData().
+    //!
+    //! The default implementation keeps every existing device working
+    //! unchanged: it copies out of the resident buffer.
+    //!
+    //! `pos` is absolute. Returns how much was actually copied.
+    virtual size_t readData(uint8_t* dest, size_t pos, size_t len) const;
+
+    //! The whole content, or nullptr for a device that does not hold it.
+    //! Prefer readData(); this stays for devices that genuinely are a buffer.
+    virtual const uint8_t* rawData() const = 0;
 
     bool isOpenModeReadable() const;
     bool isOpenModeWriteable() const;
@@ -88,7 +102,6 @@ protected:
 
 private:
 
-    const uint8_t* cdataOffsetted() const;
 
     OpenMode m_mode = OpenMode::Unknown;
     size_t m_pos = 0;

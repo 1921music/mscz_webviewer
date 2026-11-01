@@ -1,5 +1,7 @@
 #include "color.h"
 
+#include <algorithm>
+
 #include <sstream>
 #include <iomanip>
 
@@ -63,6 +65,33 @@ bool Color::operator!=(const Color& other) const
 bool Color::operator<(const Color& other) const
 {
     return m_rgba < other.m_rgba;
+}
+
+Color Color::lighter(int factor) const
+{
+    if (factor <= 0) {
+        return *this;
+    }
+
+    // HSV value is the largest channel, so scaling it is scaling all three by
+    // the same ratio, with a clamp. Matches QColor for the achromatic and the
+    // ordinary cases, which is all this is used for.
+    const int r = red();
+    const int g = green();
+    const int b = blue();
+    const int maxChannel = std::max(r, std::max(g, b));
+
+    if (maxChannel == 0) {
+        // Black has no value to scale; QColor lightens it toward grey.
+        const int v = std::min(255, factor * 255 / 100 - 255);
+        return Color(v, v, v, alpha());
+    }
+
+    const int scaled = std::min(255, maxChannel * factor / 100);
+    auto up = [maxChannel, scaled](int c) {
+        return std::min(255, c * scaled / maxChannel);
+    };
+    return Color(up(r), up(g), up(b), alpha());
 }
 
 std::string Color::toString() const

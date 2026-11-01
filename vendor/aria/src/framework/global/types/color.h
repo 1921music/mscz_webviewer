@@ -57,6 +57,12 @@ public:
 
     bool operator<(const Color& other) const;
 
+    //! mscz_test: QColor::lighter equivalent -- scales the HSV value by
+    //! factor/100, clamped, leaving hue, saturation and alpha alone. Only
+    //! QColor had this, and EngravingConfiguration uses it for the highlight
+    //! colour.
+    Color lighter(int factor = 150) const;
+
     std::string toString() const;
     static Color fromString(const std::string& str);
     static Color fromString(const char* str);

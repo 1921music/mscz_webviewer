@@ -48,6 +48,13 @@ if (NOT MUSE_QT_SUPPORT)
     set(ENGRAVING_NO_ACCESSIBILITY ON CACHE BOOL "" FORCE)
 endif()
 
+# MessageBox asks IInteractive to put a dialog up, and IInteractive's interface
+# is QUrl-typed. A renderer has nobody to ask, so the engine's own switch for
+# "no way to interact" also comes on with Qt off.
+if (NOT MUSE_QT_SUPPORT)
+    add_compile_definitions(ENGRAVING_NO_INTERACTIVE)
+endif()
+
 # Display only. Dropping playback also drops engraving's only dependency on the
 # mpe module, which is why mpe is not vendored at all.
 set(MUE_BUILD_ENGRAVING_PLAYBACK OFF CACHE BOOL "" FORCE)
@@ -66,6 +73,12 @@ set(MUE_COMPILE_USE_SYSTEM_HARFBUZZ ON CACHE BOOL "" FORCE)
 # Android. The engine embeds its resources, so the path they form is unused.
 set(MUSE_APP_INSTALL_PREFIX "/usr/local" CACHE STRING "" FORCE)
 set(MUSE_APP_INSTALL_NAME "mscz_test" CACHE STRING "" FORCE)
+
+# FontsDatabase registers fonts with QFontDatabase and QFont substitutions
+# under this option; with Qt gone there is nothing to register them with.
+if (NOT MUSE_QT_SUPPORT)
+    set(MUSE_MODULE_DRAW_USE_QTFONTMETRICS OFF CACHE BOOL "" FORCE)
+endif()
 
 include(SetupBuildEnvironment)
 include(GetPlatformInfo)

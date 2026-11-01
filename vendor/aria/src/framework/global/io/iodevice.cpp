@@ -142,7 +142,7 @@ size_t IODevice::read(uint8_t* data, size_t len)
         len = left;
     }
 
-    std::memcpy(data, cdataOffsetted(), len);
+    len = readData(data, m_pos, len);
 
     m_pos += len;
     return len;
@@ -167,20 +167,33 @@ ByteArray IODevice::read(size_t len)
         len = left;
     }
 
-    ByteArray result(cdataOffsetted(), len);
+    ByteArray result;
+    result.resize(len);
+    len = readData(result.data(), m_pos, len);
+    result.resize(len);
 
     m_pos += len;
 
     return result;
 }
 
-const uint8_t* IODevice::cdataOffsetted() const
+size_t IODevice::readData(uint8_t* dest, size_t pos, size_t len) const
 {
     const uint8_t* d = rawData();
     IF_ASSERT_FAILED(d) {
-        return nullptr;
+        return 0;
     }
-    return d + m_pos;
+
+    const size_t total = dataSize();
+    if (pos >= total) {
+        return 0;
+    }
+    if (len > total - pos) {
+        len = total - pos;
+    }
+
+    std::memcpy(dest, d + pos, len);
+    return len;
 }
 
 ByteArray IODevice::readAll()

@@ -69,7 +69,7 @@
 #endif
 #endif
 
-#ifdef Q_OS_WASM
+#if defined(Q_OS_WASM) || defined(NO_QT_SUPPORT)
 #include "io/internal/memfilesystem.h"
 #else
 #include "io/internal/filesystem.h"
@@ -139,7 +139,9 @@ void GlobalModule::registerExports()
     ioc()->registerExport<ITickerProvider>(moduleName(), m_tickerProvider);
 #endif
 
-#ifdef Q_OS_WASM
+#if defined(Q_OS_WASM) || defined(NO_QT_SUPPORT)
+    //! NOTE mscz_test: see the CMakeLists -- the Qt-free build serves every
+    //! path, ":/..." resources included, out of memory that the caller fills.
     ioc()->registerExport<IFileSystem>(moduleName(), new MemFileSystem());
 #else
     ioc()->registerExport<IFileSystem>(moduleName(), new FileSystem());

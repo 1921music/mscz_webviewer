@@ -23,8 +23,10 @@
 
 #include <cstring>
 
+#ifndef NO_QT_SUPPORT
 #include <QFile>
 #include <QFileInfo>
+#endif
 
 #include "global/containers.h"
 #include "global/stringutils.h"
@@ -35,9 +37,22 @@ using namespace muse::io;
 
 //! NOTE Very simple implementation without directory support
 
+//! Whether a path names a Qt resource rather than a file this object holds.
+//!
+//! mscz_test: always false in the Qt-free build. There are no Qt resources
+//! there, so a ":/..." path is just another key, and whoever starts the engine
+//! puts the bytes in under that name -- read off disk on a host, fetched in a
+//! browser. That keeps every ":/fonts/..." and ":/engraving/instruments/..."
+//! path in the engine working untouched, and keeps file reading out of the
+//! engine entirely.
 static bool isRC(const muse::io::path_t& path)
 {
+#ifdef NO_QT_SUPPORT
+    UNUSED(path);
+    return false;
+#else
     return muse::strings::startsWith(path.toStdString(), ":/");
+#endif
 }
 
 muse::Ret MemFileSystem::exists(const muse::io::path_t& path) const
