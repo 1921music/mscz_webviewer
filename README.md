@@ -376,19 +376,57 @@ LTO を有効にしたままでは関数が融合されて「どの merged body 
 
 ### どこから手を付けるべきか
 
-1. **HarfBuzz のサブセッタ — 出力 916KB、バイナリの 13% がこれ 1 ファイル。**
-   SVG にフォントのサブセットを埋め込む既定モードのためだけに要る。
-   `--reference-fonts` なら不要なので、**埋め込みをビルド時オプションにすれば一発で 13%**。
-   既定モードを変えるかどうかの判断が要る（テキスト選択の都合で path-embed を既定にした経緯）
-2. **`engraving/editing` — オブジェクトの 6.1%。** 我々はビューアなので編集は要らない。
-   `edit.cpp` 664KB ＋ `cmd.cpp` 468KB。参照を切る作業が要る
-3. **旧フォーマット読み込み（read114/read206/compat）＋ `rw/write` — 4.7%。**
-   対応フォーマットを決めれば落ちる
-4. **`types/symnames.cpp` 722KB と `typesconv.cpp` 786KB** — 中身は下記。
-   必須の表と UI 専用の表が並んでいるが、**UI 側はもう `TranslatableString` を
-   空にして回収済み**で、残っているのは必須部分。ここはもう取るものが少ない
+**先に 2 つ訂正。** どちらも「オブジェクトの大きさ」で見て間違えたもので、
+**リンカが既に大半を落としているので、判断は出力への寄与で見なければならない。**
 
-### 4番（symnames / typesconv）は何で、必須なのか
+| 候補 | 出力バイト | 対 engraving | 対 全体 |
+|---|---|---|---|
+| **HarfBuzz のサブセッタ** | 328KB | — | **4.6%** |
+| `rw`: 現行フォーマット読み込み（必須） | 487KB | 10.0% | 6.8% |
+| **`engraving/editing` 全体** | 275KB | 5.7% | 3.9% |
+| `rw`: 旧フォーマット読み込み（維持と決定） | 134KB | 2.7% | 1.9% |
+| **`rw/write`（保存。ビューアでは不要）** | 128KB | 2.6% | 1.8% |
+| **`rendering/single`（パレット用）** | 81KB | 1.7% | 1.1% |
+| `rw/compat` | 41KB | 0.8% | 0.6% |
+
+**訂正1: HarfBuzz は「1 スイッチで 13%」ではない。** `harfbuzz-subset.cc` は
+`harfbuzz.cc` のほぼ上位集合なので、**同じ 1 ファイルに整形器（必須）とサブセッタが
+同居している**。マップのシンボル単位で割ると整形器 592KB・**サブセッタ 328KB**。
+つまり埋め込みをやめて得られるのは 920KB ではなく **328KB（全体の 4.6%）**。
+
+**訂正2: `engraving/editing` は削除できない。** 移調がそこに実装されている。
+`editing/transpose.cpp` の `Transpose::transpose()` が本体で、
+`undoAddElement` / `undoChangeKeySig` / `undoChangeProperty` / `undoTransposeHarmony`
+を呼び、aria の view-transpose は `startCmd()` / `endCmd()`（undo スタック）と
+`cmdSelectAll()` で囲んでいる。パート譜切替も `Excerpt::createExcerptsFromParts` 経由で
+`editing/editexcerpt.cpp` を使う。出力 275KB のうち
+**`edit.cpp` 77KB ＋ `cmd.cpp` 41KB ＋ `undo.cpp` 17KB ＋ `transpose.cpp` 8KB = 143KB が
+移調の通り道**で、これは外せない。
+
+残る 132KB も素直には落ちない。`textedit.cpp` が残っているのは
+`TextBase::startEdit` / `endEdit` という**仮想関数**が vtable から参照されるためで、
+`--gc-sections` では消えない（消すには 176 個の `dom/*.cpp` で仮想関数を
+`#ifdef` で消す必要がある）。`editchord.cpp` が残っているのは
+括弧付き音符という**記譜機能**で、譜面を読むのに実際に使う。
+
+### 落とせるものの実際の順位
+
+| | 出力 | 状態 |
+|---|---|---|
+| 1. HarfBuzz のサブセッタ | **328KB** | 既定の SVG モードを変えるかの判断待ち |
+| 2. `rw/write`（保存経路） | **128KB** | 表示専用なので不要。未着手 |
+| 3. `rendering/single`（パレット用描画） | **81KB** | 未着手 |
+| 4. FreeType の `TT_RunIns` ＋ gzip | 22KB | `ftoption-min.h` は書いたが未適用 |
+| — `engraving/editing` | 275KB | **移調に必要。削除不可**（上記 訂正2） |
+| — `rw`: 旧フォーマット読み込み | 134KB | **維持と決定** |
+| — `types/symnames` `typesconv` | — | 必須部分のみ残っている（下記） |
+
+1〜4 を全部やっても **559KB raw**、brotli では**その数分の 1**。
+engraving 本体の 68% は 29万行のコードそのもので、ここは削るものではない。
+**サイズを本気で下げるならコードではなくリソース側**（必須 522KB brotli）か、
+機能分割して遅延読み込みする方向になる。
+
+### `symnames.cpp` と `typesconv.cpp` は何で、必須なのか
 
 **`types/symnames.cpp`（6,532行）は 2 本の並んだ配列**で、要素数はどちらも
 `SymId::lastSym + 1` = 約 3,061（SMuFL の全シンボル）:
