@@ -5,6 +5,7 @@
  */
 #include "hostio.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -184,6 +185,95 @@ public:
 
 private:
     std::map<std::string, const mscz::EmbeddedResource*> m_entries;
+};
+
+//! Remembers what it has read, up to a budget.
+class CachingProvider : public mscz::IResourceProvider
+{
+public:
+    CachingProvider(std::shared_ptr<mscz::IResourceProvider> inner, size_t maxEntry, size_t maxTotal)
+        : m_inner(std::move(inner)), m_maxEntry(maxEntry), m_maxTotal(maxTotal) {}
+
+    bool exists(const std::string& path) const override
+    {
+        return m_cache.find(path) != m_cache.end() || (m_inner && m_inner->exists(path));
+    }
+
+    std::unique_ptr<mscz::IReadStream> open(const std::string& path) const override
+    {
+        auto it = m_cache.find(path);
+        if (it != m_cache.end()) {
+            return std::unique_ptr<mscz::IReadStream>(new View(it->second));
+        }
+
+        if (!m_inner) {
+            return nullptr;
+        }
+
+        std::unique_ptr<mscz::IReadStream> stream = m_inner->open(path);
+        if (!stream) {
+            return nullptr;
+        }
+
+        const uint64_t size = stream->size();
+        if (size > m_maxEntry || m_total + size > m_maxTotal) {
+            // Too big to hold, or the budget is spent. Hand back the stream as
+            // it is, so a large score keeps streaming.
+            return stream;
+        }
+
+        std::vector<uint8_t> bytes(static_cast<size_t>(size));
+        size_t got = 0;
+        while (got < bytes.size()) {
+            const size_t n = stream->read(bytes.data() + got, got, bytes.size() - got);
+            if (n == 0) {
+                break;
+            }
+            got += n;
+        }
+        if (got != bytes.size()) {
+            // A short read is not something to cache a wrong answer for.
+            return m_inner->open(path);
+        }
+
+        m_total += bytes.size();
+        auto added = m_cache.emplace(path, std::move(bytes)).first;
+        return std::unique_ptr<mscz::IReadStream>(new View(added->second));
+    }
+
+private:
+    //! Reads out of a cache entry without copying it. The map owns the bytes
+    //! and its nodes are stable, so the reference stays good.
+    class View : public mscz::IReadStream
+    {
+    public:
+        explicit View(const std::vector<uint8_t>& bytes)
+            : m_bytes(bytes) {}
+
+        uint64_t size() const override { return m_bytes.size(); }
+
+        size_t read(uint8_t* dest, uint64_t pos, size_t len) override
+        {
+            if (pos >= m_bytes.size()) {
+                return 0;
+            }
+            const size_t n = std::min<size_t>(len, m_bytes.size() - static_cast<size_t>(pos));
+            std::memcpy(dest, m_bytes.data() + pos, n);
+            return n;
+        }
+
+    private:
+        const std::vector<uint8_t>& m_bytes;
+    };
+
+    std::shared_ptr<mscz::IResourceProvider> m_inner;
+    size_t m_maxEntry = 0;
+    size_t m_maxTotal = 0;
+
+    // open() is const because the interface is read-only; the cache it fills
+    // is an implementation detail of answering the same question faster.
+    mutable std::map<std::string, std::vector<uint8_t> > m_cache;
+    mutable size_t m_total = 0;
 };
 
 //! First provider that has it, wins.
@@ -413,6 +503,12 @@ std::shared_ptr<IResourceProvider> makeDirectoryProvider(const std::string& reso
                                                          const std::string& manifestPath)
 {
     return std::make_shared<DirectoryProvider>(resourceRoot, manifestPath);
+}
+
+std::shared_ptr<IResourceProvider> makeCachingProvider(std::shared_ptr<IResourceProvider> inner,
+                                                       size_t maxEntryBytes, size_t maxTotalBytes)
+{
+    return std::make_shared<CachingProvider>(std::move(inner), maxEntryBytes, maxTotalBytes);
 }
 
 std::shared_ptr<IResourceProvider> makeEmbeddedProvider(const EmbeddedResource* table)

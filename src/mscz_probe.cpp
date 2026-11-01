@@ -100,7 +100,11 @@ int main(int argc, char* argv[])
 
     // The host decides where resources come from. Here that is the vendored
     // tree on disk; a browser build hands over a provider that fetches.
-    mscz::Engine::setResourceProvider(mscz::makeDirectoryProvider(resourceRoot, manifest));
+    // Cached, because the engine asks for the same font repeatedly and this
+    // tree often sits on a Windows drive seen through WSL, where that costs
+    // minutes rather than seconds. See makeCachingProvider.
+    mscz::Engine::setResourceProvider(
+        mscz::makeCachingProvider(mscz::makeDirectoryProvider(resourceRoot, manifest)));
 
     std::string error;
     std::unique_ptr<mscz::Session> session = mscz::Session::openPath(scorePath, error);

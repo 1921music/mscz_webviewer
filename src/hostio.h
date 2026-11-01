@@ -177,6 +177,24 @@ struct EmbeddedResource {
 
 std::shared_ptr<IResourceProvider> makeEmbeddedProvider(const EmbeddedResource* table);
 
+//! Keeps small resources in memory after the first read.
+//!
+//! Not a micro-optimisation. The engine re-reads a resource every time it
+//! wants it -- FontsDatabase::fontData() goes back to the file on each call by
+//! design, which is what makes its lazy loading lazy -- so a provider backed
+//! by slow storage is asked for the same font over and over. Measured on this
+//! machine with the resource tree on a Windows drive seen through WSL:
+//! goldberg's layout took over ten minutes, against 2.4 seconds with the same
+//! tree on the Linux filesystem. Caching removes the difference, and makes the
+//! native providers behave like the browser one, which holds its bytes anyway.
+//!
+//! Bounded on purpose. Anything larger than `maxEntryBytes` is passed straight
+//! through, so a large score still streams rather than becoming resident, and
+//! caching stops once `maxTotalBytes` is reached.
+std::shared_ptr<IResourceProvider> makeCachingProvider(std::shared_ptr<IResourceProvider> inner,
+                                                       size_t maxEntryBytes = 4u * 1024 * 1024,
+                                                       size_t maxTotalBytes = 32u * 1024 * 1024);
+
 //! Tries each provider in turn and takes the first that has the resource.
 //!
 //! This is what makes the single seam pay off: whether a given resource is

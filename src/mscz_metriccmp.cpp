@@ -108,7 +108,8 @@ int main(int argc, char* argv[])
     const std::string manifest = argc > 2 ? argv[2] : MSCZ_RESOURCE_MANIFEST;
 
     // The engine has to be up for the fonts database to know any fonts.
-    mscz::Engine::setResourceProvider(mscz::makeDirectoryProvider(resourceRoot, manifest));
+    mscz::Engine::setResourceProvider(
+        mscz::makeCachingProvider(mscz::makeDirectoryProvider(resourceRoot, manifest)));
     mscz::Engine::initializeIfNeeded();
 
     QFontProvider qt;
