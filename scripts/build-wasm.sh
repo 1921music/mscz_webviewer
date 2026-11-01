@@ -3,7 +3,13 @@
 # Phase 3's build: the Qt-free tree through emscripten.
 #
 #   wsl -d mscz_dev -- bash /mnt/c/.../scripts/build-wasm.sh
+#   wsl -d mscz_dev -- bash /mnt/c/.../scripts/build-wasm.sh --quick
 #   wsl -d mscz_dev -- bash /mnt/c/.../scripts/build-wasm.sh --errors [pattern]
+#
+# --quick builds into its own directory without -Oz or LTO. Use it for
+# anything that asks whether the engine is right rather than how big it is:
+# 98% of a build is compiling, and compiling for size is what costs.
+# Size figures must come from the default build.
 #
 # Keeps going past the first failure so one pass shows the whole surface, and
 # reports one error per failing translation unit rather than a wall of them --
@@ -24,7 +30,16 @@ done
 export PATH
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="${BUILD_DIR:-$HOME/build/mscz-wasm}"
+
+BUILD_TYPE=MinSizeRel
+SUFFIX=""
+if [ "${1:-}" = "--quick" ]; then
+    BUILD_TYPE=Debug
+    SUFFIX="-quick"
+    shift
+fi
+
+BUILD_DIR="${BUILD_DIR:-$HOME/build/mscz-wasm${SUFFIX}}"
 LOG="${BUILD_DIR}.log"
 
 if [ "${1:-}" = "--errors" ]; then
@@ -46,8 +61,9 @@ if [ ! -f "${BUILD_DIR}/CMakeCache.txt" ]; then
     # emcmake puts the emscripten toolchain file in place; everything else is
     # the same configuration Phase 2 uses.
     emcmake cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -G Ninja \
-        -DCMAKE_BUILD_TYPE=MinSizeRel \
+        -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
         -DMUSE_QT_SUPPORT=OFF \
+        ${MSCZ_CMAKE_EXTRA:-} \
         || exit 1
 fi
 

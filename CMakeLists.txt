@@ -37,8 +37,39 @@ include(${MU_ROOT}/src/framework/cmake/MuseDeclareOptions.cmake)
 set(MUSE_QT_SUPPORT ON CACHE BOOL "Build the engine against Qt")
 
 set(MUSE_ENABLE_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-set(MUSE_COMPILE_USE_PCH OFF CACHE BOOL "" FORCE)
-set(MUSE_COMPILE_USE_UNITY OFF CACHE BOOL "" FORCE)
+
+# The two levers that change how long a build takes rather than what it
+# produces. Our own options, forced onto the upstream ones: upstream's
+# MuseDeclareOptions.cmake has already created those cache entries by now --
+# with PCH on -- so a plain set() of them would be a no-op and the default
+# would silently become upstream's. scripts/bench-build.sh measures these.
+#
+# PCH is off because it cannot work here: MuseCreateModule reuses a muse_pch
+# target that lives in aria's buildscripts/pch, which we do not vendor.
+#
+# Unity is on: measured, it turns 470 translation units into 121 and a full
+# wasm build from clean from 435 seconds into 204. The output is the same --
+# both demo scores still match the native build's layout exactly and page 1 is
+# byte-identical. It also makes the .wasm 399KB smaller raw, though only 6.5KB
+# smaller brotli, so treat that as a build-time win rather than a size one.
+#
+# Turn it off if a newly added file collides with another in its module; that
+# is the known hazard of unity builds, and scripts/bench-build.sh can measure
+# what it costs to do without.
+option(MSCZ_USE_PCH "Precompile the module headers (needs a muse_pch target)" OFF)
+option(MSCZ_USE_UNITY "Compile each module as a few large translation units" ON)
+set(MUSE_COMPILE_USE_PCH ${MSCZ_USE_PCH} CACHE BOOL "" FORCE)
+set(MUSE_COMPILE_USE_UNITY ${MSCZ_USE_UNITY} CACHE BOOL "" FORCE)
+
+# ccache if it is there. Worth having: with the cache warm the same full wasm
+# build takes 88 seconds instead of 204, which is what makes flipping between
+# configurations -- the whole of a size investigation -- bearable.
+find_program(MSCZ_CCACHE ccache)
+if (MSCZ_CCACHE)
+    set(CMAKE_C_COMPILER_LAUNCHER "${MSCZ_CCACHE}" CACHE STRING "")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${MSCZ_CCACHE}" CACHE STRING "")
+    message(STATUS "mscz: compiling through ${MSCZ_CCACHE}")
+endif()
 
 # Accessibility is a screen-reader bridge whose interfaces are Qt-typed
 # (QString, QRect, QVariant in the signatures), so it cannot come along into
@@ -118,11 +149,32 @@ endif()
 
 set(BUILD_SHARED_LIBS OFF)
 
+# There is no user interface here, so no one ever reads a TranslatableString.
+# They are not free, though: engraving's conversion tables carry two per entry
+# and each one converts UTF-8 to UTF-16 and allocates before main. On by
+# default for every configuration, so the native and wasm builds stay
+# comparable byte for byte.
+option(MSCZ_NO_TRANSLATABLE_STRINGS "Do not build the translatable string tables" ON)
+if (MSCZ_NO_TRANSLATABLE_STRINGS)
+    add_compile_definitions(MUSE_NO_TRANSLATABLE_STRINGS)
+endif()
+
 if (EMSCRIPTEN)
-    # Size over speed, everywhere, and LTO at compile time as well as at link
-    # time -- the cross-translation-unit pruning is where most of the saving is,
-    # and it cannot happen if the objects do not carry bitcode.
-    add_compile_options(-Oz -flto)
+    # Size over speed, and LTO at compile time as well as at link time -- the
+    # cross-translation-unit pruning is where most of the saving is, and it
+    # cannot happen if the objects do not carry bitcode.
+    #
+    # But only when the build is for size. Measured with .ninja_log, 98% of a
+    # full build is compiling and 2% is linking, so the way to a quick build is
+    # to compile cheaply -- and a run of check-wasm.sh does not care how big
+    # the binary is. CMAKE_BUILD_TYPE=Debug gives a correctness build; use
+    # MinSizeRel for anything whose size gets quoted.
+    if (CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_compile_options(-Oz -flto)
+        set(MSCZ_WASM_SIZE_BUILD ON)
+    else()
+        message(STATUS "mscz: a quick wasm build -- correct, but not small")
+    endif()
 endif()
 
 if (MSCZ_VENDORED_THIRDPARTY)

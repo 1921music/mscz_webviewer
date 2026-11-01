@@ -37,9 +37,26 @@ add_subdirectory(${MSCZ_THIRDPARTY}/freetype freetype EXCLUDE_FROM_ALL)
 # 140 KB brotli against 209 KB for the full set -- see scripts/wasm-size.
 set(MSCZ_FTMODULE ${CMAKE_CURRENT_LIST_DIR}/../scripts/wasm-size/ftmodule-min.h)
 cmake_path(NORMAL_PATH MSCZ_FTMODULE)
+
 target_compile_definitions(freetype PRIVATE
     "FT_CONFIG_MODULES_H=\"${MSCZ_FTMODULE}\""
 )
+
+# And the features inside the drivers we keep: no hinting, since hinting is for
+# rasterising and we only read outlines, and no compressed containers. In the
+# binary before this, TT_RunIns -- the TrueType bytecode interpreter -- was
+# 13.6 KB and FT_Gzip_Uncompress 8.8 KB, for things we never do.
+#
+# PUBLIC, unlike the module list: the module list only reaches ftinit.c, but
+# the options header is included by FreeType's public headers, so everything
+# that includes them has to agree with how the library was built.
+if (MSCZ_TRIM_FREETYPE_OPTIONS)
+    set(MSCZ_FTOPTION ${CMAKE_CURRENT_LIST_DIR}/../scripts/wasm-size/ftoption-min.h)
+    cmake_path(NORMAL_PATH MSCZ_FTOPTION)
+    target_compile_definitions(freetype PUBLIC
+        "FT_CONFIG_OPTIONS_H=\"${MSCZ_FTOPTION}\""
+    )
+endif()
 
 set(FREETYPE_LIBRARIES freetype)
 set(FREETYPE_INCLUDE_DIRS ${MSCZ_THIRDPARTY}/freetype/include)

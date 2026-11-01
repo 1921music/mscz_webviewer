@@ -299,14 +299,16 @@ z が実際に違う要素には影響しない。**レイアウトのフィン�
 
 | | raw | gzip | brotli |
 |---|---|---|---|
-| `mscz-engine.wasm` | 4,974KB | 1,745KB | **1,326KB** |
+| `mscz-engine.wasm` | 4,464KB | — | **1,290KB** |
 | `mscz-engine.js`（emscripten のローダ） | 16KB | 6KB | 5KB |
 | `mscz.js`（自作ラッパ） | 5KB | 2KB | 2KB |
 | 必須リソース（30ファイル） | 2,675KB | 626KB | **522KB** |
 | 任意リソース（6ファイル） | 2,757KB | 133KB | 108KB |
 
-**初回ロードは brotli で約 1.77MB**（wasm + ローダ + 必須リソース）。2回目以降はキャッシュ。
-wasm の内訳は CODE 4,016KB / DATA 934KB。
+**初回ロードは brotli で約 1.73MB**（wasm + ローダ + 必須リソース）。2回目以降はキャッシュ。
+
+wasm の数字は下記「依存の棚卸し」の 2 つの変更を含む。棚卸し前は raw 4,974KB /
+gzip 1,745KB / brotli 1,327KB、内訳は CODE 4,016KB / DATA 934KB だった。
 
 リソースが raw 2.7MB に対し brotli 522KB しかないのは、大半が JSON と XML で 5:1 近く縮むため。
 **配信を brotli にするかどうかで初回ロードが 2MB 以上変わる**ので、ここは必ず圧縮すること。
@@ -335,6 +337,75 @@ FreeType + HarfBuzz の 476KB raw は、単体計測の 216KB brotli とちょ�
 注意: LTO は関数を融合するので、**単独の関数名への帰属は目安**。シンボルマップは融合後の
 1 関数に名前を 1 つしか持たない（`SvgPaintProvider::endTarget` が 106KB と出るのはそれ）。
 領域ごとの合計は信頼できる。
+
+### 依存の棚卸し（2026-11-01 実測）
+
+「機能を削るのではなく、例外/RTTI/iostream/ICU のような依存を切れないか」を測った
+（`scripts/wasm-size/payload.sh`）。関数本体 4,008KB・DATA 934KB に対して:
+
+| | バイト | 関数数 | |
+|---|---|---|---|
+| **ICU 等の unicode ライブラリ** | **0** | 0 | 使っていない。`muse::String` が自前 |
+| **例外機構**（`__cxa_*`/unwind/invoke_） | **1,248** | 49 | **既に無効**。切る余地なし |
+| **RTTI**（`__dynamic_cast`/type_info） | 6,651 | 193 | +typeinfo 文字列 25KB = 計 32KB |
+| **iostream / locale / num_put** | 67,261 | 287 | 実在。ログと SVG 組み立てが呼び元 |
+| `std::regex` | 48,309 | 192 | コード/テンポ/強弱の解析で実使用 |
+| `std::function` | 18,176 | 398 | |
+| pthread | 9,087 | 166 | スレッドは1本も動いていない |
+| printf 系 | 7,145 | 8 | |
+| malloc（emmalloc） | 1,664 | 5 | 既に最小 |
+
+export している関数は 13 個（`mscz_*`）＋emscripten の内部 6 個だけで、無駄はない。
+
+**つまり挙げた4つのうちサイズに効くのは iostream だけだった。** 一方で、挙げていない
+ところに大きいものがあった:
+
+| | バイト |
+|---|---|
+| `__wasm_call_ctors`（静的初期化） | 583,291（コードの 14.5%） |
+| DATA 内の関数シグネチャ文字列（`LOG_TAG` = `CLASSFUNC`） | 119,929（1,249本） |
+| ソースパス文字列 | 16,953 |
+
+### 例外は「既に無効」で、それ自体がバグだった
+
+`__cxa_throw` は **import**（JS 側で `abort()`）で、`__cxa_begin_catch` はバイナリに存在しない。
+emscripten 既定で catch が無効なので、**`-fno-exceptions` を付けても 1.2KB しか減らない**。
+
+問題は副作用。`global/types/string.cpp` の UTF-8/UTF-16 変換は throw する
+`utf8::utf8to16` を try で囲んでいた。native では動くが wasm では throw が
+`abort()` に落ちて `ABORT=true` になり、**以後の全呼び出しが失敗する**。実証:
+
+```
+不正バイト 0xFF 0xE0 0x80 を text 要素に注入した .mscz
+  native : 1013 要素を描画して完了
+  wasm   : Aborted(undefined) でモジュール全体が死亡
+```
+
+`utf8::replace_invalid` + unchecked 変換（U+FFFD 置換）に変更した。wasm も 1013 要素を
+描画する。throw 版は最初の不正バイトで打ち切っていたので**挙動も改善**している。
+UTF-16/32 側には utfcpp に相当物が無いので、孤立サロゲートと範囲外コードポイント用の
+小さなサニタイザを書いた。
+
+### 静的初期化 583KB の正体
+
+`Item<T>`（enum↔文字列の変換テーブルの要素）が `TranslatableString` を 2 個持ち、その
+コンストラクタが `String::fromUtf8` を呼ぶ。つまり**テーブルの全要素で UTF-16 変換と
+ヒープ確保が main 前に走る**（`types/typesconv.cpp` だけでテーブル 60 個）。
+
+このプロジェクトには UI が無く、読む側（インスペクタ・パレット・スクリーンリーダ）は
+1 つもビルドしていない。`MSCZ_NO_TRANSLATABLE_STRINGS`（既定 ON）でメンバを残したまま
+中身を詰めないようにした。全呼び出し箇所はそのままコンパイルでき、テーブルは
+ただのポインタになる。
+
+| | raw | brotli |
+|---|---|---|
+| 変更前 | 4,977KB | 1,327KB |
+| **`MSCZ_NO_TRANSLATABLE_STRINGS`** | 4,863KB | **1,297KB**（−30KB） |
+| ＋unity build（ビルド時間目的） | 4,464KB | 1,290KB（−6.5KB） |
+
+**brotli では 30KB（2.3%）。** raw の 114KB に対して圧縮後が小さいのは、消えたのが
+反復的な初期化コードだからで、圧縮が元々よく効いていた部分。
+レイアウトは両デモ譜で 0 差分、1 ページ目の SVG もバイト一致。
 
 ### 次に削れる見込みのあるもの
 
@@ -573,9 +644,54 @@ distro は**いつでも捨てて作り直せる**前提。中に大事なもの
 - `scripts/wsl/New-MsczDevDistro.ps1` — Windows 側。distro の登録・破棄・CA書き出し
 - `scripts/wsl/provision.sh` — distro 内。apt → TLS 判定 → ユーザ作成 → mise → ツール導入
 - `scripts/build-host.sh` — distro 内。Phase 1 のホストビルド
+- `scripts/bench-build.sh` — distro 内。ビルド時間の条件比較（下記）
 
 `/etc/wsl.conf` で `appendWindowsPath=false` にしてあるので、Windows の PATH は distro に
 漏れてこない。
+
+### ビルド時間（2026-11-01 実測）
+
+`.ninja_log` に各ステップの実時間が残るので、まずそれを見た。**コンパイルが 98%、
+リンクが 2%**（wasm で 11,876 秒 対 270 秒）。だから LTO リンクをどうにかしても無駄で、
+効くのは「重い翻訳単位を 470 個コンパイルしている」ところだけ。
+
+`scripts/bench-build.sh` で条件を直列に測った（`muse_global`、90 TU、基準 29 秒）:
+
+| 条件 | 時間 | 対基準 |
+|---|---|---|
+| baseline（ソースが `/mnt/c`、`-j22`） | 29 s | — |
+| ソースを Linux FS にコピー | 23 s | −21% |
+| `-j11` | 31 s | +7% |
+| **unity build** | 17 s | **−41%** |
+| ccache 1回目（投入） | 37 s | +28% |
+| **ccache 2回目** | 1 s | **−97%** |
+
+フルの wasm ビルド（clean から）での確認:
+
+| | 時間 | wasm raw | wasm brotli |
+|---|---|---|---|
+| baseline | **435 s** | 4,863KB | 1,297KB |
+| unity build | **204 s** | 4,464KB | 1,290KB |
+| unity + ccache 温 | **88 s** | 同 | 同 |
+
+**unity を既定にした。** 470 TU が **121 TU** になり、出力は変わらない
+（両デモ譜のレイアウトがネイティブと完全一致、1ページ目の SVG もバイト一致）。
+raw が 399KB 縮むが brotli では 6.5KB しか変わらないので、**サイズの改善ではなく
+ビルド時間の改善**として扱う。ccache も見つかれば自動で使う（`provision.sh` が入れる）。
+
+はまりどころ3つ:
+
+- **`/mnt/c` の影響はコンパイルでは 2 割**。リソース読み込みでは 400 倍だったが
+  （前述の 978 秒）、コンパイルは CPU 律速なので桁は変わらない。コピー運用の
+  陳腐化リスクに見合わないと判断した
+- **`-j11` はむしろ遅い。** メモリ 15GB でも 22 並列で詰まってはいない
+- **PCH は使えない。** `MuseCreateModule` が `muse_pch` を `REUSE_FROM` する作りで、
+  それは aria の `buildscripts/pch` にあり我々は vendor していない。
+  `MUSE_COMPILE_USE_PCH` を非 FORCE にすると上流の既定 ON が漏れて configure が
+  失敗するので、自前の `MSCZ_USE_PCH` から FORCE している
+
+**正しさの確認に `-Oz -flto` は要らない。** `build-wasm.sh --quick` が最適化なしの
+別ディレクトリに作る。サイズを引用する数字は既定ビルドからのみ取ること。
 
 ### ベース distro は Ubuntu 26.04 でなければならない
 

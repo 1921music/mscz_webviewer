@@ -88,9 +88,14 @@ if (EMSCRIPTEN)
     # hand-written wrapper over it, so the names must not collide.
     set_target_properties(mscz_wasm PROPERTIES OUTPUT_NAME mscz-engine)
 
+    # Matching the compile side: a size build optimises at link too, a quick
+    # build does not, because the link is 2% of the time either way and -Oz
+    # -flto there is what turns 95 seconds into something longer.
+    if (MSCZ_WASM_SIZE_BUILD)
+        target_link_options(mscz_wasm PRIVATE -Oz -flto)
+    endif()
+
     target_link_options(mscz_wasm PRIVATE
-        -Oz
-        -flto
         --no-entry
         -sMODULARIZE=1
         -sEXPORT_ES6=1

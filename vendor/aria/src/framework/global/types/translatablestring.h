@@ -42,8 +42,27 @@ public:
     int defaultN = -1;
 
     TranslatableString() = default;
+
+#ifdef MUSE_NO_TRANSLATABLE_STRINGS
+    //! mscz_test: this project has no user interface, so nothing ever asks a
+    //! TranslatableString for its text -- the only readers are the inspector,
+    //! the palettes and the screen-reader bridge, none of which are built. But
+    //! they are not free: engraving's conversion tables (types/typesconv.cpp
+    //! alone has sixty of them) hold two TranslatableStrings per entry, and
+    //! this constructor runs String::fromUtf8 on each one, which means a
+    //! UTF-8 to UTF-16 conversion and a heap allocation per table entry before
+    //! main. That is what made __wasm_call_ctors the largest single function
+    //! in the binary.
+    //!
+    //! Keeping the member but not filling it leaves every call site compiling
+    //! and makes the tables plain pointers. isEmpty() is then always true and
+    //! translated() returns nothing, which is what a build with nobody to
+    //! translate for should say.
+    TranslatableString(const char*, const char*, const char* = nullptr, int = -1) {}
+#else
     TranslatableString(const char* context, const char* str, const char* disambiguation = nullptr, int n = -1)
         : context(context), str(String::fromUtf8(str)), disambiguation(disambiguation), defaultN(n) {}
+#endif
     TranslatableString(const char* context, const String& str, const char* disambiguation = nullptr, int n = -1)
         : context(context), str(str), disambiguation(disambiguation), defaultN(n) {}
 

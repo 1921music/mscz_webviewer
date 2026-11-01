@@ -68,6 +68,7 @@ fi
 
 apt_retry update -qq
 apt_retry install -y --no-install-recommends \
+    ccache \
     dpkg-dev \
     build-essential \
     ca-certificates \
@@ -214,6 +215,14 @@ cat >/etc/profile.d/20-mise.sh <<'EOF'
 export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"
 EOF
 chmod 0644 /etc/profile.d/20-mise.sh
+
+# ---------------------------------------------------------------------------
+# ccache. The root CMakeLists finds it and compiles through it; the default
+# 5GB limit is too small for a tree this size held in several configurations
+# at once, and the point of the cache is being able to flip between them.
+# ---------------------------------------------------------------------------
+log "Sizing the ccache"
+su - "${DEV_USER}" -c 'ccache --max-size=20G' >/dev/null 2>&1 || true
 
 # ---------------------------------------------------------------------------
 # Report what we ended up with.
