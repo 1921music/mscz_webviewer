@@ -9,6 +9,8 @@
 #include <string>
 #include <vector>
 
+#include "hostio.h"
+
 //! The slim display-only facade over the vendored MuseScore engine: open a
 //! score, lay it out, transpose or switch parts for display, paint a page.
 //!
@@ -31,13 +33,30 @@ class Engine
 public:
     //! Starts the engine. Safe to call more than once; later calls do nothing.
     //! Must be the first thing called, on the main thread.
+    //!
+    //! `resources` is how the engine gets at fonts, the SMuFL metadata and the
+    //! instrument definitions -- by the ":/..." names it uses internally. It
+    //! is the only route to a file: nothing in the engine opens one itself,
+    //! which is what lets the same code run in a browser with a provider that
+    //! fetches instead. Must be set before the first call, and is ignored
+    //! afterwards.
+    static void setResourceProvider(std::shared_ptr<IResourceProvider> resources);
+
     static void initializeIfNeeded();
 };
 
 class Session
 {
 public:
-    static std::unique_ptr<Session> open(const std::string& scorePath, std::string& error);
+    //! Opens a score from a seekable reader. The reader is handed to the ZIP
+    //! layer as a device, so a .mscz is not pulled in whole: it seeks to the
+    //! central directory and inflates only the entries that get read.
+    static std::unique_ptr<Session> open(std::unique_ptr<IReadStream> score, const ScoreInfo& info,
+                                        std::string& error);
+
+    //! Convenience for a host that has a path: opens it through the resource
+    //! provider, so the engine still never sees a filesystem.
+    static std::unique_ptr<Session> openPath(const std::string& scorePath, std::string& error);
 
     ~Session();
 

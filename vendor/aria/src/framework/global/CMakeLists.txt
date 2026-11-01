@@ -251,27 +251,21 @@ else()
 
     include(GetPlatformInfo)
 
-    # mscz_test: the memory file system is not only for wasm. FileSystem is
-    # QFile and QDirListing, and more to the point we do not want the engine
-    # touching a real filesystem at all -- whoever starts it puts the score,
-    # the fonts and the instrument definitions in by name, read off disk on a
-    # host and fetched in a browser. So the Qt-free build uses it everywhere.
-    if (OS_IS_WASM OR NOT MUSE_QT_SUPPORT)
+    # mscz_test: with Qt off, global provides no IFileSystem at all. FileSystem
+    # is QFile and QDirListing, and more to the point file access is the host's
+    # business: it registers one before the modules start, and that
+    # registration wins because the ioc keeps the first. See src/hostio.h.
+    if (OS_IS_WASM)
         target_sources(muse_global PRIVATE
             io/internal/memfilesystem.cpp
             io/internal/memfilesystem.h
+            internal/platform/web/webinteractive.cpp
+            internal/platform/web/webinteractive.h
         )
-    else()
+    elseif (MUSE_QT_SUPPORT)
         target_sources(muse_global PRIVATE
             io/internal/filesystem.cpp
             io/internal/filesystem.h
-        )
-    endif()
-
-    if (OS_IS_WASM)
-        target_sources(muse_global PRIVATE
-            internal/platform/web/webinteractive.cpp
-            internal/platform/web/webinteractive.h
         )
     endif()
 

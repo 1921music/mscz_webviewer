@@ -69,9 +69,9 @@
 #endif
 #endif
 
-#if defined(Q_OS_WASM) || defined(NO_QT_SUPPORT)
+#ifdef Q_OS_WASM
 #include "io/internal/memfilesystem.h"
-#else
+#elif !defined(NO_QT_SUPPORT)
 #include "io/internal/filesystem.h"
 #endif
 
@@ -139,12 +139,15 @@ void GlobalModule::registerExports()
     ioc()->registerExport<ITickerProvider>(moduleName(), m_tickerProvider);
 #endif
 
-#if defined(Q_OS_WASM) || defined(NO_QT_SUPPORT)
-    //! NOTE mscz_test: see the CMakeLists -- the Qt-free build serves every
-    //! path, ":/..." resources included, out of memory that the caller fills.
+#ifdef Q_OS_WASM
     ioc()->registerExport<IFileSystem>(moduleName(), new MemFileSystem());
-#else
+#elif !defined(NO_QT_SUPPORT)
     ioc()->registerExport<IFileSystem>(moduleName(), new FileSystem());
+#else
+    //! NOTE mscz_test: nothing here. File access is the host's, and it
+    //! registers an IFileSystem before the modules start; the ioc keeps the
+    //! first registration, so that one wins. If none was registered,
+    //! resolution fails loudly rather than quietly reading a real disk.
 #endif
 
 #ifdef MUSE_MODULE_UI

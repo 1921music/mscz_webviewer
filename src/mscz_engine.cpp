@@ -25,6 +25,8 @@
 #include "engraving/engravingmodule.h"
 #include "engraving/compat/mscxcompat.h"
 #include "engraving/compat/scoreaccess.h"
+#include "engraving/infrastructure/mscreader.h"
+#include "engraving/rw/mscloader.h"
 #include "engraving/dom/engravingitem.h"
 #include "engraving/dom/instrtemplate.h"
 #include "engraving/dom/masterscore.h"
@@ -38,6 +40,8 @@
 namespace {
 
 constexpr muse::IApplication::RunMode kRunMode = muse::IApplication::RunMode::ConsoleApp;
+
+std::shared_ptr<mscz::IResourceProvider> g_resources;
 
 //! Brings up the muse framework the way aria's RenderRuntime does: global,
 //! draw and engraving, in that order, through the full module lifecycle.
@@ -70,6 +74,16 @@ private:
         m_modules.emplace_back(std::make_unique<mu::engraving::EngravingModule>());
 
         muse::modularity::globalIoc()->registerExport<muse::IApplication>("mscz_test", new mscz::AppStub());
+
+        //! NOTE Registered before the modules, because the ioc keeps the first
+        //! registration. With Qt off the engine offers none at all; with Qt on
+        //! global would offer a QFile-backed one, and this takes precedence so
+        //! both builds read through the same host-side route.
+        IF_ASSERT_FAILED(g_resources) {
+            LOGE() << "no resource provider set; call Engine::setResourceProvider first";
+        }
+        muse::modularity::globalIoc()->registerExport<muse::io::IFileSystem>(
+            "mscz_test", new mscz::HostFileSystem(g_resources));
 
         m_globalModule.registerResources();
         m_globalModule.registerExports();
@@ -137,6 +151,11 @@ private:
 
 namespace mscz {
 
+void Engine::setResourceProvider(std::shared_ptr<IResourceProvider> resources)
+{
+    g_resources = std::move(resources);
+}
+
 void Engine::initializeIfNeeded()
 {
     (void)Runtime::instance();
@@ -146,6 +165,8 @@ class Session::Impl
 {
 public:
     std::unique_ptr<mu::engraving::MasterScore> masterScore;
+    //! Outlives the score: the ZIP layer reads through it on demand.
+    std::unique_ptr<StreamDevice> device;
     int pageCount = 0;
 
     mu::engraving::rendering::IScoreRenderer* renderer() const
@@ -164,8 +185,14 @@ Session::Session(std::unique_ptr<Impl> impl)
 
 Session::~Session() = default;
 
-std::unique_ptr<Session> Session::open(const std::string& scorePath, std::string& error)
+std::unique_ptr<Session> Session::open(std::unique_ptr<IReadStream> score, const ScoreInfo& info,
+                                      std::string& error)
 {
+    if (!score) {
+        error = "No score to read.";
+        return nullptr;
+    }
+
     Engine::initializeIfNeeded();
 
     auto impl = std::make_unique<Impl>();
@@ -176,12 +203,32 @@ std::unique_ptr<Session> Session::open(const std::string& scorePath, std::string
         return nullptr;
     }
 
-    const muse::io::path_t path(scorePath);
-    muse::Ret ret = mu::engraving::compat::loadMsczOrMscx(impl->masterScore.get(), path, false);
+    // Not compat::loadMsczOrMscx: that takes a path and opens an io::File,
+    // which reads the whole thing. Going through MscReader with a device lets
+    // the ZIP layer seek and inflate only the entries it reads.
+    impl->device = std::make_unique<StreamDevice>(std::move(score));
+
+    mu::engraving::MscReader::Params params;
+    params.device = impl->device.get();
+    params.mode = mu::engraving::MscIoMode::Zip;
+
+    mu::engraving::MscReader reader(params);
+    muse::Ret ret = reader.open();
     if (!ret) {
-        // Same second chance desktop MuseScore's "open anyway" gives a file
+        error = "Could not read the score container: " + ret.text();
+        return nullptr;
+    }
+
+    // Not optional: MscLoader reads fileInfo()->fileName() while loading, and
+    // a score opened from a stream has no file to take it from.
+    impl->masterScore->setFileInfoProvider(makeStreamFileInfoProvider(info));
+
+    mu::engraving::MscLoader loader;
+    ret = loader.loadMscz(impl->masterScore.get(), reader, nullptr, false);
+    if (!ret) {
+        // The second chance desktop MuseScore's "open anyway" gives a file
         // written by a newer version.
-        ret = mu::engraving::compat::loadMsczOrMscx(impl->masterScore.get(), path, true);
+        ret = loader.loadMscz(impl->masterScore.get(), reader, nullptr, true);
     }
     if (!ret) {
         error = "Could not read the score: " + ret.text();
@@ -193,6 +240,26 @@ std::unique_ptr<Session> Session::open(const std::string& scorePath, std::string
     impl->pageCount = static_cast<int>(impl->masterScore->pages().size());
 
     return std::unique_ptr<Session>(new Session(std::move(impl)));
+}
+
+std::unique_ptr<Session> Session::openPath(const std::string& scorePath, std::string& error)
+{
+    Engine::initializeIfNeeded();
+
+    if (!g_resources) {
+        error = "No resource provider set.";
+        return nullptr;
+    }
+
+    std::unique_ptr<IReadStream> stream = g_resources->open(scorePath);
+    if (!stream) {
+        error = "Could not open " + scorePath;
+        return nullptr;
+    }
+
+    ScoreInfo info;
+    info.name = muse::io::filename(muse::io::path_t(scorePath)).toStdString();
+    return open(std::move(stream), info, error);
 }
 
 int Session::pageCount() const

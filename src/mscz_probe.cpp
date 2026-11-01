@@ -45,6 +45,8 @@ int main(int argc, char* argv[])
     int dpi = 144;
     std::string outDir = ".";
     std::string scorePath;
+    std::string resourceRoot = MSCZ_RESOURCE_ROOT;
+    std::string manifest = MSCZ_RESOURCE_MANIFEST;
     bool fingerprint = false;
     bool svg = false;
     // Default to the self-contained pair. Embedding costs about 13KB brotli
@@ -59,6 +61,8 @@ int main(int argc, char* argv[])
             dpi = std::atoi(argv[++i]);
         } else if (std::strcmp(a, "--out") == 0 && i + 1 < argc) {
             outDir = argv[++i];
+        } else if (std::strcmp(a, "--resources") == 0 && i + 1 < argc) {
+            resourceRoot = argv[++i];
         } else if (std::strcmp(a, "--fingerprint") == 0) {
             fingerprint = true;
         } else if (std::strcmp(a, "--svg") == 0) {
@@ -89,8 +93,12 @@ int main(int argc, char* argv[])
         return usage();
     }
 
+    // The host decides where resources come from. Here that is the vendored
+    // tree on disk; a browser build hands over a provider that fetches.
+    mscz::Engine::setResourceProvider(mscz::makeDirectoryProvider(resourceRoot, manifest));
+
     std::string error;
-    std::unique_ptr<mscz::Session> session = mscz::Session::open(scorePath, error);
+    std::unique_ptr<mscz::Session> session = mscz::Session::openPath(scorePath, error);
     if (!session) {
         std::fprintf(stderr, "mscz_probe: %s\n", error.c_str());
         return 1;
