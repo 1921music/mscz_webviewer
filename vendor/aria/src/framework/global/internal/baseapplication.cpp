@@ -160,13 +160,21 @@ Qt::KeyboardModifiers BaseApplication::keyboardModifiers() const
 void BaseApplication::restart()
 {
     m_finishMode = FinishMode::Restart;
+#ifdef NO_QT_SUPPORT
+    //! NOTE mscz_test: these three are an application's lifecycle -- quitting,
+    //! relaunching itself, pumping an event loop. A renderer is embedded in
+    //! something that owns all of that, and in a browser there is no process
+    //! to restart, so they do nothing rather than pretend.
+    NOT_SUPPORTED;
+#else
     QCoreApplication::exit();
+#endif
 }
 
 void BaseApplication::finish()
 {
     if (m_finishMode == IApplication::FinishMode::Restart) {
-#ifdef QT_QPROCESS_SUPPORTED
+#if defined(QT_QPROCESS_SUPPORTED) && !defined(NO_QT_SUPPORT)
         QString program = qApp->arguments()[0];
 
         // NOTE: remove the first argument - the program name
@@ -196,6 +204,8 @@ void BaseApplication::removeIoC()
 
 void BaseApplication::processEvents()
 {
+#ifndef NO_QT_SUPPORT
     qApp->processEvents();
+#endif
     tickerProvider()->forceSchedule();
 }

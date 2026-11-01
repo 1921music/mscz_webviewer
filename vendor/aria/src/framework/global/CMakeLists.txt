@@ -201,8 +201,6 @@ else()
 
         internal/baseapplication.cpp
         internal/baseapplication.h
-        internal/globalconfiguration.cpp
-        internal/globalconfiguration.h
         internal/process.cpp
         internal/process.h
     )
@@ -241,11 +239,16 @@ else()
             internal/tickerprovider.cpp
             internal/tickerprovider.h
         )
+        target_sources(muse_global PRIVATE
+            internal/globalconfiguration.cpp
+            internal/globalconfiguration.h
+        )
     else()
         target_sources(muse_global PRIVATE
             internal/cryptographichashstd.cpp
             internal/cryptographichashstd.h
             internal/tickerproviderstub.h
+            internal/globalconfigurationstub.h
         )
     endif()
 

@@ -71,10 +71,13 @@ target_sources(muse_draw PRIVATE
 if (DRAW_NO_INTERNAL)
     target_compile_definitions(muse_draw PRIVATE DRAW_NO_INTERNAL DRAW_NO_QSVGRENDER)
 else()
+    target_sources(muse_draw PRIVATE
+        svgrenderer.cpp
+        svgrenderer.h
+    )
+
     if (MUSE_QT_SUPPORT)
         target_sources(muse_draw PRIVATE
-            svgrenderer.cpp
-            svgrenderer.h
             internal/qpainterprovider.cpp
             internal/qpainterprovider.h
             internal/qimageprovider.h

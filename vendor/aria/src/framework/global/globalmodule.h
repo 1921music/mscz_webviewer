@@ -34,7 +34,7 @@
 
 namespace muse {
 class SystemInfo;
-class GlobalConfiguration;
+class IGlobalConfiguration;
 class BaseApplication;
 class ITickerProvider;
 class GlobalModule : public modularity::IModuleSetup
@@ -55,7 +55,9 @@ public:
     void setLoggerLevel(const muse::logger::Level& level);
 
 private:
-    std::shared_ptr<GlobalConfiguration> m_configuration;
+    //! mscz_test: the interface, not the concrete class, because which
+    //! implementation it is now depends on whether Qt is in the build.
+    std::shared_ptr<IGlobalConfiguration> m_configuration;
     std::shared_ptr<SystemInfo> m_systemInfo;
     std::shared_ptr<ITickerProvider> m_tickerProvider;
     Ticker m_asyncTicker;

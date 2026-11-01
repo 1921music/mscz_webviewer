@@ -88,7 +88,8 @@ void EngravingConfiguration::init()
         Settings::Key key("engraving", "engraving/colors/voice" + std::to_string(voice + 1));
 
         settings()->setDefaultValue(key, Val(DEFAULT_VOICE_COLORS[voice]));
-        settings()->setDescription(key, muse::qtrc("engraving", "Voice %1 color").arg(voice + 1).toStdString());
+        settings()->setDescription(key,
+                                   muse::mtrc("engraving", "Voice %1 color").arg(voice + 1).toStdString());
         settings()->setCanBeManuallyEdited(key, true);
         settings()->valueChanged(key).onReceive(this, [this, voice](const Val& val) {
             Color color = val.toColor();
@@ -243,12 +244,20 @@ SizeF EngravingConfiguration::defaultPageSize() const
 
 bool EngravingConfiguration::canLayoutIcons() const
 {
+#ifdef NO_QT_SUPPORT
+    return false;
+#else
     return uiConfiguration() != nullptr;
+#endif
 }
 
 muse::String EngravingConfiguration::iconsFontFamily() const
 {
+#ifdef NO_QT_SUPPORT
+    return String();
+#else
     return uiConfiguration() ? String::fromStdString(uiConfiguration()->iconsFontFamily()) : String();
+#endif
 }
 
 Color EngravingConfiguration::defaultColor() const
@@ -304,9 +313,13 @@ Color EngravingConfiguration::noteBackgroundColor() const
 
 Color EngravingConfiguration::fontPrimaryColor() const
 {
+#ifdef NO_QT_SUPPORT
+    return Color::BLACK;
+#else
     return uiConfiguration()
            ? Color(uiConfiguration()->currentTheme().values[muse::ui::ThemeStyleKey::FONT_PRIMARY_COLOR].toString())
            : Color::BLACK;
+#endif
 }
 
 Color EngravingConfiguration::voiceColor(voice_idx_t voiceIdx) const
@@ -316,7 +329,11 @@ Color EngravingConfiguration::voiceColor(voice_idx_t voiceIdx) const
 
 double EngravingConfiguration::guiScaling() const
 {
+#ifdef NO_QT_SUPPORT
+    return 1.0;
+#else
     return uiConfiguration() ? uiConfiguration()->guiScaling() : 1.0;
+#endif
 }
 
 Color EngravingConfiguration::selectionColor(voice_idx_t voice, bool itemVisible, bool itemIsUnlinkedFromScore) const

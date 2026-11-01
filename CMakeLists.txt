@@ -74,10 +74,18 @@ set(MUE_COMPILE_USE_SYSTEM_HARFBUZZ ON CACHE BOOL "" FORCE)
 set(MUSE_APP_INSTALL_PREFIX "/usr/local" CACHE STRING "" FORCE)
 set(MUSE_APP_INSTALL_NAME "mscz_test" CACHE STRING "" FORCE)
 
-# FontsDatabase registers fonts with QFontDatabase and QFont substitutions
-# under this option; with Qt gone there is nothing to register them with.
 if (NOT MUSE_QT_SUPPORT)
+    # FontsDatabase registers fonts with QFontDatabase and QFont substitutions
+    # under this one; with Qt gone there is nothing to register them with.
     set(MUSE_MODULE_DRAW_USE_QTFONTMETRICS OFF CACHE BOOL "" FORCE)
+
+    # Settings takes a cross-process lock through IMultiWindowsProvider, whose
+    # interface is QStringList-typed. One renderer, one process, no windows.
+    set(MUSE_MODULE_MULTIWINDOWS OFF CACHE BOOL "" FORCE)
+
+    # Interactive puts dialogs up through IInteractiveProvider, which is
+    # QVariantMap-typed. There is no user to ask.
+    set(MUSE_MODULE_UI OFF CACHE BOOL "" FORCE)
 endif()
 
 include(SetupBuildEnvironment)

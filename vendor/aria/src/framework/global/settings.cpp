@@ -22,10 +22,12 @@
 
 #include "settings.h"
 
+#ifndef NO_QT_SUPPORT
 #include <QDateTime>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QDir>
+#endif
 
 #ifdef MUSE_MODULE_MULTIWINDOWS
 #include "multiwindows/resourcelockguard.h"
@@ -46,8 +48,18 @@ Settings* Settings::instance()
     return &s;
 }
 
+//! NOTE mscz_test: the Qt-free build does not persist settings.
+//!
+//! Settings is QSettings underneath -- an INI file in the user's data
+//! directory. A renderer only ever reads defaults and whatever was set during
+//! the session, and writing to a user's disk is not something it should do,
+//! so without Qt the store is simply absent: reads find nothing and fall back
+//! to the default, and writes stay in memory.
 Settings::Settings()
 {
+#ifdef NO_QT_SUPPORT
+    // Nothing to open.
+#else
 #ifdef WIN_PORTABLE
     QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dataPath());
     QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, dataPath());
@@ -58,16 +70,24 @@ Settings::Settings()
 #endif
 
     m_settings = new QSettings();
+#endif
 }
 
 Settings::~Settings()
 {
+#ifndef NO_QT_SUPPORT
     delete m_settings;
+#endif
 }
 
 io::path_t Settings::filePath() const
 {
+#ifdef NO_QT_SUPPORT
+    // No store, so no file behind it.
+    return io::path_t();
+#else
     return m_settings->fileName();
+#endif
 }
 
 const Settings::Items& Settings::items() const
@@ -94,7 +114,9 @@ void Settings::load()
 
 void Settings::reset(bool keepDefaultSettings, bool notifyAboutChanges, bool notifyOtherInstances)
 {
+#ifndef NO_QT_SUPPORT
     m_settings->clear();
+#endif
 
     m_isTransactionStarted = false;
 
@@ -111,10 +133,14 @@ void Settings::reset(bool keepDefaultSettings, bool notifyAboutChanges, bool not
 
     m_localSettings.clear();
 
+#ifndef NO_QT_SUPPORT
     if (!keepDefaultSettings) {
         QDir(dataPath()).removeRecursively();
         QDir().mkpath(dataPath());
     }
+#else
+    UNUSED(keepDefaultSettings);
+#endif
 
     if (!notifyAboutChanges) {
         return;
@@ -144,6 +170,7 @@ void Settings::reset(bool keepDefaultSettings, bool notifyAboutChanges, bool not
 #endif
 }
 
+#ifndef NO_QT_SUPPORT
 static Val compat_QVariantToVal(const QVariant& var)
 {
     if (!var.isValid()) {
@@ -167,10 +194,15 @@ static Val compat_QVariantToVal(const QVariant& var)
 
     return Val::fromQVariant(var);
 }
+#endif
 
 Settings::Items Settings::readItems() const
 {
     Items result;
+#ifdef NO_QT_SUPPORT
+    // No store to read: every key falls back to its default.
+    return result;
+#else
 #ifdef MUSE_MODULE_MULTIWINDOWS
     muse::mi::ReadResourceLockGuard resource_lock(multiwindowsProvider.get(), SETTINGS_RESOURCE_NAME);
 #endif
@@ -183,6 +215,7 @@ Settings::Items Settings::readItems() const
     }
 
     return result;
+#endif
 }
 
 const Val& Settings::value(const Key& key) const
@@ -232,13 +265,21 @@ void Settings::setLocalValue(const Key& key, const Val& value)
 
 void Settings::writeValue(const Key& key, const Val& value)
 {
+#ifdef NO_QT_SUPPORT
+    // Values live in m_items for the session; nothing goes to disk.
+    UNUSED(key);
+    UNUSED(value);
+    return;
+#else
 #ifdef MUSE_MODULE_MULTIWINDOWS
     muse::mi::WriteResourceLockGuard resource_lock(multiwindowsProvider.get(), SETTINGS_RESOURCE_NAME);
 #endif
     // TODO: implement writing/reading first part of key (module name)
     m_settings->setValue(QString::fromStdString(key.key), value.toQVariant());
+#endif
 }
 
+#ifndef NO_QT_SUPPORT
 QString Settings::dataPath() const
 {
 #ifdef WIN_PORTABLE
@@ -247,6 +288,7 @@ QString Settings::dataPath() const
     return QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
 #endif
 }
+#endif
 
 void Settings::setDefaultValue(const Key& key, const Val& value)
 {

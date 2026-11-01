@@ -26,7 +26,14 @@
 
 #include "modularity/ioc.h"
 #include "global/iglobalconfiguration.h"
+#include "global/types/retval.h"
+//! mscz_test: IUiConfiguration's interface is QColor-typed, and it only
+//! supplies theme colours, the icon font and the GUI scale -- things a
+//! renderer has no use for. Every use site already copes with it being
+//! absent, so the Qt-free build simply does not inject it.
+#ifndef NO_QT_SUPPORT
 #include "ui/iuiconfiguration.h"
+#endif
 #include "accessibility/iaccessibilityconfiguration.h"
 #include "importexport/guitarpro/iguitarproconfiguration.h"
 
@@ -36,7 +43,9 @@ namespace mu::engraving {
 class EngravingConfiguration : public IEngravingConfiguration, public muse::Contextable, public muse::async::Asyncable
 {
     muse::GlobalInject<muse::IGlobalConfiguration> globalConfiguration;
+#ifndef NO_QT_SUPPORT
     muse::GlobalInject<muse::ui::IUiConfiguration> uiConfiguration;
+#endif
     muse::GlobalInject<muse::accessibility::IAccessibilityConfiguration> accessibilityConfiguration;
     muse::GlobalInject<iex::guitarpro::IGuitarProConfiguration> guitarProConfiguration;
 

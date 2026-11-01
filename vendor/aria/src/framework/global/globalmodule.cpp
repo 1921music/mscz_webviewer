@@ -24,7 +24,6 @@
 #include "muse_framework_config.h"
 
 #include "modularity/ioc.h"
-#include "internal/globalconfiguration.h"
 
 #include "logger.h"
 #include "logremover.h"
@@ -35,10 +34,12 @@
 
 #ifndef NO_QT_SUPPORT
 #include "internal/cryptographichash.h"
+#include "internal/globalconfiguration.h"
 #include "internal/systeminfo.h"
 #include "internal/tickerprovider.h"
 #else
 #include "internal/cryptographichashstd.h"
+#include "internal/globalconfigurationstub.h"
 #include "internal/tickerproviderstub.h"
 #endif
 
@@ -115,7 +116,11 @@ void GlobalModule::registerExports()
         m_application = std::make_shared<ApplicationStub>();
     }
 
+#ifndef NO_QT_SUPPORT
     m_configuration = std::make_shared<GlobalConfiguration>(iocContext());
+#else
+    m_configuration = std::make_shared<GlobalConfigurationStub>();
+#endif
 
     ioc()->registerExport<IApplication>(moduleName(), m_application);
     ioc()->registerExport<IGlobalConfiguration>(moduleName(), m_configuration);
@@ -201,7 +206,7 @@ void GlobalModule::onPreInit(const IApplication::RunMode& mode)
 
     //! Log file
     io::path_t logFilePath = "none";
-#ifndef MUSE_CONFIGURATION_IS_WEB
+#if !defined(MUSE_CONFIGURATION_IS_WEB) && !defined(NO_QT_SUPPORT)
     io::path_t logPath = m_configuration->userAppDataPath() + "/logs";
     fileSystem()->makePath(logPath);
 
@@ -295,8 +300,13 @@ void GlobalModule::onPreInit(const IApplication::RunMode& mode)
 
 void GlobalModule::onInit(const IApplication::RunMode&)
 {
+#ifndef NO_QT_SUPPORT
+    //! NOTE mscz_test: init() is on the concrete GlobalConfiguration and
+    //! SystemInfo, not on their interfaces. Without Qt the configuration is a
+    //! stub with nothing to initialise, and there is no SystemInfo at all.
     m_configuration->init();
     m_systemInfo->init();
+#endif
 
     m_endTimePeriod = false;
 

@@ -122,9 +122,11 @@ private:
     Items readItems() const;
     void writeValue(const Key& key, const Val& value);
 
+#ifndef NO_QT_SUPPORT
     QString dataPath() const;
 
     QSettings* m_settings = nullptr;
+#endif
     mutable Items m_items;
     mutable Items m_localSettings;
     mutable bool m_isTransactionStarted = false;
