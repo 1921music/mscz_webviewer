@@ -176,6 +176,82 @@ goldberg の残り 3% も同じで、筆頭の `MeasureNumber` 1048件は `FreeS
 **Phase 2 の達成基準は「同梱フォントだけを使うスコアで一致すること」**とする。
 未同梱フォントの扱いは、下記のフォント解決方針の話に帰着する。
 
+### `boundingRect(文字列)` の移植（2026-11-02）
+
+Phase 2 で最後まで残していた項目。`QFontProvider` を移植したとき、**似て非なる2つを
+同じインク外接矩形で実装していた**:
+
+| | 中身 |
+|---|---|
+| `tightBoundingRect(文字列)` | インクの外接矩形。これは合っていた |
+| `boundingRect(文字列)` | **行ボックス。** インクではない |
+
+実測で規則を当てるのではなく、**Qt 6.10.2（参照ビルドが実際にリンクしている版）の
+ソースを apt から取って読んだ**。`apt-get source qt6-base`（この環境で切られない唯一の
+経路）。鎖を降りると答えは 1 関数に収束する:
+
+```
+QFontMetricsF::boundingRect(QString)        qfontmetrics.cpp:1504
+  -> QTextEngine::boundingBox(0, len)       qtextengine.cpp:2334
+       -> QFontEngine::boundingBox(glyphs)  qfontengine.cpp:611
+```
+
+```cpp
+QFixed w;
+for (i) w += glyphs.effectiveAdvance(i);
+leftBearing  = firstLeftBearing(glyphs);
+lastRightBearing(glyphs);
+return glyph_metrics_t(leftBearing, -(ascent()),
+                       w - leftBearing - rightBearing,
+                       ascent() + descent(), w, 0);
+```
+
+つまり **x = 先頭グリフの左サイドベアリング、y = −ascent、幅 = アドバンスの総和から
+両端のベアリングを引いたもの、高さ = ascent + descent。** インクの箱ではなく行の箱。
+だから食い違っていたのが `.h` と `.y` だったことも説明がつく。
+
+`QTextEngine` 側は複数のスクリプトアイテムを `qMin`/`qMax` で畳むが、
+**1フォント・1アイテム（ここの呼び出し元は全部そう）では素通し**になる
+（`glyph_metrics_t()` が x = y = 100000、残りを 0 で初期化するので、min が値を取り
+max が幅と高さを取る）。`tightBoundingBox` との違いは、葉の
+`QFontEngine::tightBoundingBox` を呼ぶかどうかだけ。
+
+#### 結果
+
+`mscz_metriccmp`（Qt と我々を 270 項目で直接比較）で:
+
+| | 移植前 | 移植後 |
+|---|---|---|
+| 差分のある項目の合計 | 84 / 270 | **54 / 270** |
+| `boundingRect.h` | 15 | **0** |
+| `boundingRect.y` | 11 | **3** |
+
+**同梱フォントでは Edwin が `boundingRect` 完全一致**、Leland は `.w` が 1 項目だけ
+1.4% 残る（アウトライン対ラスタライズの 1 単位差が外ベアリング経由で出たもので、
+Phase 2 で既知・許容と判断した `box(cp)` の差と同源）。残る `.y` 3 項目は
+Times New Roman と FreeSerif、つまり**字体置換**の話。
+
+レイアウトは変わっていない（wasm 対 native 0 差分、SVG バイト一致、Qt 比較も
+Amazing_grace 83% / goldberg 3% のまま）。**予想どおり**で、理由は
+この関数を使う要素 —— `Bend`（ベンドのラベル）・`FSymbol`・グリッサンドの文字 ——
+が**検証に使っている譜面に 1 つも出てこない**こと。だから今まで検出されなかった。
+
+#### 併せて直したもの: 比較ツール自身の誤り
+
+`Leland Text` のプローブが U+E0A4（noteheadBlack）を要求していたが、
+**LelandText.otf にそのグリフは無い**（`fc-query` で確認、SMuFL 域は 21 レンジのみで
+符頭は含まない）。我々は「そんなグリフは無い」と 0 を返し、Qt は黙って別フォントに
+フォールバックして 54.266 を返していた。つまり**この 11 項目の食い違いは我々が正しく、
+プローブが間違っていた**（しかもこのフォールバックは `QFontProvider::inFont` が
+避けようとしているまさにその挙動）。U+E261（accidentalNatural）に替えたら全項目一致した。
+
+#### 残した逸脱（意図的）
+
+Qt の `tightBoundingBox` は各グリフの右端・下端を `x.ceil()` / `y.ceil()` で
+デバイスピクセルに切り上げるが、我々はしない。1200dpi では 1/20 ポイント未満で、
+実測の 0.3% 一致はほぼこれ。**歌詞の bbox がここから来ており、Phase 2 のベースラインは
+現在の挙動で検証済みなので、同じ変更にまとめず手を付けていない。**
+
 ### 本当の問題は解決経路が2本あること
 
 - レイアウトのメトリクス → Qt の `QFontProvider`

@@ -137,7 +137,14 @@ int main(int argc, char* argv[])
         { "FreeSerif", Font::Type::Text, 10.0, "7" },
         { "Leland", Font::Type::MusicSymbol, 10.0, "\xEE\x82\xA4" },   // U+E0A4 notehead
         { "Leland", Font::Type::MusicSymbol, 20.0, "\xEE\x81\x90" },   // U+E050 treble clef
-        { "Leland Text", Font::Type::MusicSymbolText, 10.0, "\xEE\x82\xA4" },
+        // U+E261 accidentalNatural, not the notehead this used to ask for.
+        // Leland Text carries only the glyphs that make sense inline -- 21
+        // ranges, no noteheads -- so asking it for U+E0A4 made every row of
+        // this probe disagree: we answered "no such glyph" and Qt quietly
+        // measured a fallback font, which is the behaviour QFontProvider's
+        // inFont was written to avoid in the first place. Our answer was the
+        // right one and the probe was wrong.
+        { "Leland Text", Font::Type::MusicSymbolText, 10.0, "\xEE\x89\xA1" },
     };
 
     for (const Probe& p : probes) {
