@@ -313,6 +313,64 @@ gzip 1,745KB / brotli 1,327KB、内訳は CODE 4,016KB / DATA 934KB だった。
 リソースが raw 2.7MB に対し brotli 522KB しかないのは、大半が JSON と XML で 5:1 近く縮むため。
 **配信を brotli にするかどうかで初回ロードが 2MB 以上変わる**ので、ここは必ず圧縮すること。
 
+### 4.5MB の大まかな分解（2026-11-01）
+
+`scripts/wasm-size/breakdown.sh`。**LTO と unity を切ってリンカのマップを取る**のが要点。
+LTO を有効にしたままでは関数が融合されて「どの merged body に入ったか」しか言えず、
+それが下の関数単位リストで `__wasm_call_ctors` 583KB のような不透明な塊になる理由。
+切ればソース1ファイル=オブジェクト1個になり、**出力の全バイトが入力に厳密に割り当たる**。
+
+| | バイト | 割合 |
+|---|---|---|
+| **engraving（エンジン本体）** | 4,872KB | **68.1%** |
+| **HarfBuzz（整形＋サブセッタ）** | 920KB | **12.9%** |
+| リンカ生成データ | 388KB | 5.4% |
+| FreeType | 313KB | 4.4% |
+| libc++ | 242KB | 3.4% |
+| muse/global | 179KB | 2.5% |
+| 自作コード（SVG・hostio・フォント） | 77KB | 1.1% |
+| muse/draw | 67KB | 0.9% |
+| emscripten libc | 58KB | 0.8% |
+| zlib | 20KB | 0.3% |
+
+**注意: これは `wasm-opt` 前のリンカ出力**（合計 6,985KB に対し最終 5,195KB）。
+デバッグ情報も含む。**割合を見るためのもので、絶対値は最終バイナリと一致しない。**
+
+アーカイブはメンバをベース名で持つので（engraving には `rw/*/tread.cpp` が3つある）
+エンジン内部はマップでは分解できない。ディスク上のオブジェクトで見る:
+
+| | 割合 |
+|---|---|
+| engraving/dom | 41.4% |
+| engraving/rendering/score | 10.3% |
+| **engraving/editing** | **6.1%** |
+| engraving/rw/read400 + read410 + read460（現行フォーマット） | 9.4% |
+| engraving/types | 3.2% |
+| engraving/style | 2.6% |
+| engraving/compat | 2.0% |
+| **engraving/rw/write** | **1.6%** |
+| engraving/rw/read206 + read114 + rw/compat | 3.1% |
+
+最大の単一ソース: `harfbuzz-subset.cc`（オブジェクト 2,251KB、**出力 916KB**）、
+`dom/score.cpp` 890KB、`rw/read*/tread.cpp` ×3 で 2,458KB、`types/typesconv.cpp` 786KB、
+`types/symnames.cpp` 722KB、`editing/edit.cpp` 664KB、`dom/chordlist.cpp` 653KB、
+`style/styledef.cpp` 566KB。
+
+### どこから手を付けるべきか
+
+1. **HarfBuzz のサブセッタ — 出力 916KB、バイナリの 13% がこれ 1 ファイル。**
+   SVG にフォントのサブセットを埋め込む既定モードのためだけに要る。
+   `--reference-fonts` なら不要なので、**埋め込みをビルド時オプションにすれば一発で 13%**。
+   既定モードを変えるかどうかの判断が要る（テキスト選択の都合で path-embed を既定にした経緯）
+2. **`engraving/editing` — オブジェクトの 6.1%。** 我々はビューアなので編集は要らない。
+   `edit.cpp` 664KB ＋ `cmd.cpp` 468KB。参照を切る作業が要る
+3. **旧フォーマット読み込み（read114/read206/compat）＋ `rw/write` — 4.7%。**
+   対応フォーマットを決めれば落ちる
+4. **`types/symnames.cpp` 722KB と `typesconv.cpp` 786KB。** どちらも巨大な静的テーブル。
+   `TranslatableString` を空にして一部は消えたが、まだ大きい
+
+FreeType（4.4%）の `TT_RunIns` や gzip を削る話は、この順位では後回しでよい。
+
 ### wasm のコードはどこに使われているか
 
 `scripts/wasm-size/payload.sh` の実測（関数本体 4,006KB、11,304 関数）:

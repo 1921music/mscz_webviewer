@@ -169,8 +169,21 @@ if (EMSCRIPTEN)
     # to compile cheaply -- and a run of check-wasm.sh does not care how big
     # the binary is. CMAKE_BUILD_TYPE=Debug gives a correctness build; use
     # MinSizeRel for anything whose size gets quoted.
+    # LTO is separable from -Oz because it is what makes a size *attribution*
+    # impossible: it merges functions across translation units, so the linker
+    # can only say which merged body a byte is in, not which source file it
+    # came from. Turning it off -- together with the unity build -- gives one
+    # object per source file and a linker map that attributes every output byte
+    # exactly. The totals are then a little larger than the shipping build's,
+    # but the proportions are what a size budget needs.
+    # See scripts/wasm-size/breakdown.sh.
+    option(MSCZ_WASM_LTO "Link the wasm with LTO (off to get an attributable map)" ON)
+
     if (CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "Release")
-        add_compile_options(-Oz -flto)
+        add_compile_options(-Oz)
+        if (MSCZ_WASM_LTO)
+            add_compile_options(-flto)
+        endif()
         set(MSCZ_WASM_SIZE_BUILD ON)
     else()
         message(STATUS "mscz: a quick wasm build -- correct, but not small")

@@ -92,7 +92,17 @@ if (EMSCRIPTEN)
     # build does not, because the link is 2% of the time either way and -Oz
     # -flto there is what turns 95 seconds into something longer.
     if (MSCZ_WASM_SIZE_BUILD)
-        target_link_options(mscz_wasm PRIVATE -Oz -flto)
+        target_link_options(mscz_wasm PRIVATE -Oz)
+        if (MSCZ_WASM_LTO)
+            target_link_options(mscz_wasm PRIVATE -flto)
+        else()
+            # Without LTO the map is worth having: it says which input object
+            # every output byte came from, which is the only exact answer to
+            # "where does the four and a half megabytes go".
+            target_link_options(mscz_wasm PRIVATE
+                "-Wl,--Map=${CMAKE_BINARY_DIR}/mscz-engine.map"
+            )
+        endif()
     endif()
 
     target_link_options(mscz_wasm PRIVATE
