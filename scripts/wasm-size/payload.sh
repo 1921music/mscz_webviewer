@@ -73,7 +73,8 @@ if [ ! -x "${WASM_OPT}" ]; then
     exit 0
 fi
 
-SYMBOLS="${WEB}/mscz-engine.wasm.symbols"
+# emcc names it after the JS output, not the wasm.
+SYMBOLS="${WEB}/mscz-engine.js.symbols"
 if [ ! -f "${SYMBOLS}" ]; then
     echo "   (no symbol map; link with --emit-symbol-map)"
     exit 0
@@ -89,38 +90,59 @@ fi
     /^ \[binary-bytes\]/ { if (idx != "") { print idx, $3; idx="" } }
   ' >/tmp/mscz-func-bytes.txt
 
-# symbol map is "index:name"
-awk -F: 'NR==FNR { name[$1]=$2; next } { print $2, (($1 in name) ? name[$1] : "(index " $1 ")") }' \
-    "${SYMBOLS}" /tmp/mscz-func-bytes.txt \
+# Two numbering schemes have to be lined up. The symbol map indexes the whole
+# wasm function space, imports included; wasm-opt counts only defined
+# functions. So the offset is the number of imports -- which checks out exactly
+# here: 11304 defined + 25 imported = 11329, and the map's last index is 11328.
+#
+# The files also need different separators, hence splitting by hand.
+DEFINED=$(wc -l </tmp/mscz-func-bytes.txt)
+MAXSYM=$(awk -F: '{ if ($1+0 > m) m = $1+0 } END { print m }' "${SYMBOLS}")
+OFFSET=$(( MAXSYM + 1 - DEFINED ))
+printf '   %d defined functions, %d imported\n' "${DEFINED}" "${OFFSET}"
+
+awk -v off="${OFFSET}" '
+  NR==FNR {
+      p = index($0, ":")
+      if (p) { name[substr($0, 1, p-1)] = substr($0, p+1) }
+      next
+  }
+  {
+      i = $1 + off
+      print $2, ((i in name) ? name[i] : "(index " $1 ")")
+  }
+' "${SYMBOLS}" /tmp/mscz-func-bytes.txt \
   | sort -rn >/tmp/mscz-func-sizes.txt
 
 total=$(awk '{s+=$1} END {print s}' /tmp/mscz-func-sizes.txt)
 printf '   %d functions, %d bytes of function bodies\n\n' \
     "$(wc -l </tmp/mscz-func-sizes.txt)" "${total}"
 
-echo "   by top-level name, biggest first:"
+# The symbol map carries demangled names, so grouping is by the leading
+# namespace -- mu::engraving, muse, hb_/FT_ for the font libraries, the rest C
+# and runtime.
+echo "   by area, biggest first:"
 awk '{
-    n=$2
-    sub(/^_+/, "", n)
-    # Itanium mangling: _ZN<len><ns>... -- take the first namespace component.
-    if (match(n, /^ZN[0-9]+/)) {
-        rest=substr(n, RSTART+2)
-        len=rest+0
-        sub(/^[0-9]+/, "", rest)
-        key=substr(rest, 1, len)
-    } else if (match(n, /^Z[0-9]+/)) {
-        rest=substr(n, RSTART+1); len=rest+0
-        sub(/^[0-9]+/, "", rest); key=substr(rest, 1, len)
-    } else {
-        key="(C and runtime)"
-    }
-    bytes[key]+=$1; count[key]++
+    size=$1
+    $1=""
+    n=substr($0, 2)
+    if (n ~ /^mu::engraving::rendering/)  { key="mu::engraving::rendering" }
+    else if (n ~ /^mu::engraving::read/)  { key="mu::engraving::read* (old formats)" }
+    else if (n ~ /^mu::engraving::write/) { key="mu::engraving::write" }
+    else if (n ~ /^mu::engraving/)        { key="mu::engraving::dom and the rest" }
+    else if (n ~ /^muse::draw/)           { key="muse::draw" }
+    else if (n ~ /^muse::/)               { key="muse (global)" }
+    else if (n ~ /^mscz/ || n ~ /^\(anonymous namespace\)/) { key="our own code" }
+    else if (n ~ /^(hb_|_hb_|OT::|AAT::|graph::)/) { key="HarfBuzz" }
+    else if (n ~ /^(FT_|ft_|T1_|TT_|cff_|sfnt_|af_|ps_|psh_|tt_|cf2_|gxv)/) { key="FreeType" }
+    else if (n ~ /^(inflate|deflate|crc32|adler32|_tr_|zcalloc|gz)/) { key="zlib" }
+    else if (n ~ /^std::/)                { key="libc++ templates" }
+    else                                  { key="C and runtime" }
+    bytes[key]+=size; count[key]++
 } END {
     for (k in bytes) { printf "   %10d  %6d fn  %s\n", bytes[k], count[k], k }
-}' /tmp/mscz-func-sizes.txt | sort -rn | head -12
+}' /tmp/mscz-func-sizes.txt | sort -rn
 
 echo
 echo "   biggest single functions:"
-head -10 /tmp/mscz-func-sizes.txt | while read -r size name; do
-    printf '   %10d  %s\n' "${size}" "$(echo "${name}" | c++filt 2>/dev/null | cut -c1-110)"
-done
+head -12 /tmp/mscz-func-sizes.txt | cut -c1-120 | sed 's/^/   /'

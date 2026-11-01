@@ -255,17 +255,51 @@ node が無いので、**emsdk 同梱の node** で動かしている。ブラ�
 
 | | raw | gzip | brotli |
 |---|---|---|---|
-| `mscz-engine.wasm` | 4,974KB | 1,766KB | **1,330KB** |
+| `mscz-engine.wasm` | 4,974KB | 1,745KB | **1,326KB** |
 | `mscz-engine.js`（emscripten のローダ） | 16KB | 6KB | 5KB |
 | `mscz.js`（自作ラッパ） | 5KB | 2KB | 2KB |
-| 必須リソース（31ファイル） | 5,231KB | 683KB | **566KB** |
-| 任意リソース（5ファイル） | 201KB | 75KB | 65KB |
+| 必須リソース（30ファイル） | 2,675KB | 626KB | **522KB** |
+| 任意リソース（6ファイル） | 2,757KB | 133KB | 108KB |
 
-**初回ロードは brotli で約 1.86MB**（wasm + ローダ + 必須リソース）。2回目以降はキャッシュ。
+**初回ロードは brotli で約 1.77MB**（wasm + ローダ + 必須リソース）。2回目以降はキャッシュ。
 wasm の内訳は CODE 4,016KB / DATA 934KB。
 
-リソースが raw 5.2MB に対し brotli 566KB しかないのは、大半が JSON と XML で 10:1 近く縮むため。
-**配信を brotli にするかどうかで初回ロードが 4.6MB 変わる**ので、ここは必ず圧縮すること。
+リソースが raw 2.7MB に対し brotli 522KB しかないのは、大半が JSON と XML で 5:1 近く縮むため。
+**配信を brotli にするかどうかで初回ロードが 2MB 以上変わる**ので、ここは必ず圧縮すること。
+
+### wasm のコードはどこに使われているか
+
+`scripts/wasm-size/payload.sh` の実測（関数本体 4,006KB、11,304 関数）:
+
+| 領域 | バイト | 関数数 |
+|---|---|---|
+| C とランタイム（うち `__wasm_call_ctors` が 583KB） | 1,171KB | 1,681 |
+| `mu::engraving::dom` ほか | 956KB | 4,403 |
+| `mu::engraving::rendering` | 592KB | 462 |
+| HarfBuzz | 296KB | 1,112 |
+| **`mu::engraving::read*`（旧フォーマット読み込み）** | **290KB** | 353 |
+| libc++ のテンプレート実体化 | 208KB | 2,022 |
+| FreeType | 180KB | 486 |
+| 自作コード | 130KB | 133 |
+| `muse`（global） | 63KB | 379 |
+| **`mu::engraving::write`（保存。表示のみなら不要）** | **60KB** | 73 |
+| `muse::draw` | 57KB | 193 |
+| zlib | 3KB | 7 |
+
+FreeType + HarfBuzz の 476KB raw は、単体計測の 216KB brotli とちょうど整合する。
+
+注意: LTO は関数を融合するので、**単独の関数名への帰属は目安**。シンボルマップは融合後の
+1 関数に名前を 1 つしか持たない（`SvgPaintProvider::endTarget` が 106KB と出るのはそれ）。
+領域ごとの合計は信頼できる。
+
+### 次に削れる見込みのあるもの
+
+1. **旧フォーマットの読み込み（`read114` / `read206` / `read302` …）約 290KB raw。**
+   対応する最小フォーマットを決めれば落とせる
+2. **`rw/write` 約 60KB raw。** 表示専用なので保存経路は不要
+3. **`rendering/single` 約 50KB raw。** パレット用の単一要素描画
+4. **`__wasm_call_ctors` 583KB。** 静的初期化がインライン展開されたもの。
+   中身の調査が要る（engraving の静的テーブルが主と思われる）
 
 ### 必須と任意の線引き
 
