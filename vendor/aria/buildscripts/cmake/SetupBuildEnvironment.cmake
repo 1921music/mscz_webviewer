@@ -102,8 +102,15 @@ if(CC_IS_EMCC)
 
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${MU_ROOT}/build.artifacts)
 
-    set(EMCC_COMPILE_FLAGS "-s USE_ZLIB=1 -O2")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMCC_COMPILE_FLAGS}")
+    # mscz_test: upstream asks for the zlib port and -O2 here. The port cannot
+    # be fetched reliably where HTTPS is intercepted, so zlib is vendored and
+    # linked like any other library (cmake/MsczThirdparty.cmake), and the
+    # optimisation level is the root list file's to choose -- it sets -Oz, which
+    # -O2 here would override.
+    if (NOT MSCZ_VENDORED_THIRDPARTY)
+        set(EMCC_COMPILE_FLAGS "-s USE_ZLIB=1 -O2")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${EMCC_COMPILE_FLAGS}")
+    endif()
 
     if (BUILD_IS_DEBUG)
         set(EMCC_LINKER_FLAGS -O0)

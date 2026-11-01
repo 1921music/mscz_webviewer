@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: GPL-3.0-only
+
+  Part of mscz_test. Built on MuseScore-derived code; see vendor/aria/VENDOR.md.
+
+  Drop a .mscz on the page and it is laid out and drawn, in the browser, with
+  nothing going to a server. Serve this directory over HTTP -- the module is an
+  ES module, so file:// will not do:
+
+      python3 -m http.server --directory build/web
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>mscz_test — .mscz in the browser</title>
+<style>
+  body { font: 14px system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #27272a; }
+  header { padding: 12px 16px; background: #fff; border-bottom: 1px solid #d4d4d8;
+           display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
+           position: sticky; top: 0; }
+  #status { color: #71717a; }
+  #pages { padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  #pages svg { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.2); max-width: 100%; height: auto; }
+  #drop { padding: 48px; text-align: center; color: #71717a; }
+  body.dragging #drop { outline: 2px dashed #52525b; }
+  label { display: flex; gap: 4px; align-items: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <input type="file" id="file" accept=".mscz">
+  <label>dpi <input type="number" id="dpi" value="300" min="72" max="1200" step="12" style="width: 5em"></label>
+  <label><input type="checkbox" id="pathSymbols" checked> symbols as paths</label>
+  <label><input type="checkbox" id="embedFonts" checked> embed font subsets</label>
+  <span id="status">loading the engine…</span>
+</header>
+
+<div id="drop">or drop a .mscz here</div>
+<div id="pages"></div>
+
+<script type="module">
+import { load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED } from './mscz.js'
+
+const status = document.getElementById('status')
+const pages = document.getElementById('pages')
+const drop = document.getElementById('drop')
+
+let mscz = null
+let score = null
+
+const t0 = performance.now()
+try {
+  mscz = await load({ base: '.' })
+  status.textContent = `engine ready in ${Math.round(performance.now() - t0)} ms`
+            + ` (${(mscz.resourceBytes / 1024).toFixed(0)} KB of resources)`
+} catch (e) {
+  status.textContent = `could not start the engine: ${e.message}`
+  throw e
+}
+
+function options () {
+  return {
+    dpi: Number(document.getElementById('dpi').value) || 300,
+    symbols: document.getElementById('pathSymbols').checked ? SYMBOLS_PATH : SYMBOLS_FONT,
+    fonts: document.getElementById('embedFonts').checked ? FONTS_EMBED : FONTS_REFERENCE
+  }
+}
+
+function render () {
+  if (!score) { return }
+  pages.textContent = ''
+
+  const start = performance.now()
+  let bytes = 0
+  for (let i = 0; i < score.pageCount; ++i) {
+    const svg = score.pageSvg(i, options())
+    bytes += svg.length
+    // Parsed rather than assigned, so each page is a real SVG document
+    // element and the text in it stays selectable.
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    pages.append(document.importNode(doc.documentElement, true))
+  }
+
+  status.textContent = `${score.pageCount} page(s), ${(bytes / 1024).toFixed(0)} KB of SVG,`
+            + ` drawn in ${Math.round(performance.now() - start)} ms`
+}
+
+async function openFile (file) {
+  status.textContent = `opening ${file.name}…`
+  drop.hidden = true
+  try {
+    if (score) { score.close() }
+    score = mscz.open(new Uint8Array(await file.arrayBuffer()), file.name)
+    // So scripts/check-wasm-browser.js can ask the engine for its layout
+    // fingerprint and compare it with the native build's baseline.
+    window.__mscz = { mscz, score }
+    render()
+  } catch (e) {
+    status.textContent = `${file.name}: ${e.message}`
+    throw e
+  }
+}
+
+document.getElementById('file').addEventListener('change', e => {
+  if (e.target.files[0]) { openFile(e.target.files[0]) }
+})
+
+for (const id of ['dpi', 'pathSymbols', 'embedFonts']) {
+  document.getElementById(id).addEventListener('change', render)
+}
+
+document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging') })
+document.addEventListener('dragleave', () => document.body.classList.remove('dragging'))
+document.addEventListener('drop', e => {
+  e.preventDefault()
+  document.body.classList.remove('dragging')
+  if (e.dataTransfer.files[0]) { openFile(e.dataTransfer.files[0]) }
+})
+</script>
+</body>
+</html>

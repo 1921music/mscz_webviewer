@@ -18,6 +18,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+# mscz_test: with the copies under vendor/thirdparty in use, the targets and
+# the include paths are already set by cmake/MsczThirdparty.cmake, and the
+# fallback below -- which downloads sources -- must not run.
+if (MSCZ_VENDORED_THIRDPARTY)
+    return()
+endif()
+
 if (MUE_COMPILE_USE_SYSTEM_HARFBUZZ)
     find_package(HarfBuzz)
 

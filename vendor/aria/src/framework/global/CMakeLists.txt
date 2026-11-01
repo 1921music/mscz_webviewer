@@ -258,7 +258,12 @@ else()
     # is QFile and QDirListing, and more to the point file access is the host's
     # business: it registers one before the modules start, and that
     # registration wins because the ioc keeps the first. See src/hostio.h.
-    if (OS_IS_WASM)
+    # mscz_test: the wasm branch upstream adds MemFileSystem and WebInteractive.
+    # Neither comes along: file access is the host's business either way (see
+    # src/hostio.h), and the engine has nobody to interact with. Both are also
+    # guarded by Q_OS_WASM internally, so with Qt off they would compile to
+    # almost nothing and register nothing -- leaving them out says so.
+    if (OS_IS_WASM AND MUSE_QT_SUPPORT)
         target_sources(muse_global PRIVATE
             io/internal/memfilesystem.cpp
             io/internal/memfilesystem.h
@@ -308,7 +313,13 @@ if (CC_IS_MSVC)
     target_link_libraries(muse_global PRIVATE zlibstat)
     target_include_directories(muse_global PRIVATE ${DEPENDENCIES_INC}/zlib)
 elseif (CC_IS_EMCC)
-    #zlib included in main linker
+    # mscz_test: upstream relies on the emscripten zlib port being linked in
+    # globally (-sUSE_ZLIB=1, set in SetupBuildEnvironment.cmake). That port
+    # cannot be fetched here, so a vendored zlib is linked like any other
+    # library. See cmake/MsczThirdparty.cmake.
+    if (MSCZ_VENDORED_THIRDPARTY)
+        target_link_libraries(muse_global PRIVATE mscz_zlib)
+    endif()
 else ()
     target_link_libraries(muse_global PRIVATE z)
 endif ()

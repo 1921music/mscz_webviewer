@@ -63,10 +63,22 @@ set(MUE_BUILD_ENGRAVING_QML OFF CACHE BOOL "" FORCE)
 set(MUE_BUILD_ENGRAVING_TESTS OFF CACHE BOOL "" FORCE)
 set(MUE_BUILD_ENGRAVING_DEVTOOLS OFF CACHE BOOL "" FORCE)
 
-# The bundled FreeType/HarfBuzz are not vendored; the host build uses the
-# system ones and the wasm build will use emscripten ports.
-set(MUE_COMPILE_USE_SYSTEM_FREETYPE ON CACHE BOOL "" FORCE)
-set(MUE_COMPILE_USE_SYSTEM_HARFBUZZ ON CACHE BOOL "" FORCE)
+# FreeType and HarfBuzz. The host build can use the distro's packages; the
+# wasm build must not, because emscripten ports fetch tarballs and because we
+# want to pick FreeType's module set. See cmake/MsczThirdparty.cmake.
+if (EMSCRIPTEN)
+    set(MSCZ_VENDORED_THIRDPARTY ON)
+else()
+    set(MSCZ_VENDORED_THIRDPARTY OFF CACHE BOOL "Build FreeType/HarfBuzz from vendor/thirdparty")
+endif()
+
+if (MSCZ_VENDORED_THIRDPARTY)
+    set(MUE_COMPILE_USE_SYSTEM_FREETYPE OFF CACHE BOOL "" FORCE)
+    set(MUE_COMPILE_USE_SYSTEM_HARFBUZZ OFF CACHE BOOL "" FORCE)
+else()
+    set(MUE_COMPILE_USE_SYSTEM_FREETYPE ON CACHE BOOL "" FORCE)
+    set(MUE_COMPILE_USE_SYSTEM_HARFBUZZ ON CACHE BOOL "" FORCE)
+endif()
 
 # Fed to muse_framework_config.h by #cmakedefine. GlobalConfiguration's Linux
 # branch does not compile without them, and aria's own build only sets them for
@@ -105,6 +117,17 @@ if (MUSE_QT_SUPPORT)
 endif()
 
 set(BUILD_SHARED_LIBS OFF)
+
+if (EMSCRIPTEN)
+    # Size over speed, everywhere, and LTO at compile time as well as at link
+    # time -- the cross-translation-unit pruning is where most of the saving is,
+    # and it cannot happen if the objects do not carry bitcode.
+    add_compile_options(-Oz -flto)
+endif()
+
+if (MSCZ_VENDORED_THIRDPARTY)
+    include(cmake/MsczThirdparty.cmake)
+endif()
 
 add_subdirectory(${MU_ROOT}/src/framework/global global)
 add_subdirectory(${MU_ROOT}/src/framework/draw draw)

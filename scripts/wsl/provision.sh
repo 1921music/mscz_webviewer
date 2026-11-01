@@ -57,8 +57,18 @@ apt_retry() {
     return 1
 }
 
+# deb-src, so scripts/vendor-thirdparty.sh can get zlib's source through apt.
+# It needs to: where TLS is intercepted a large HTTPS download can come back
+# truncated, so neither the emscripten zlib port nor zlib.net's tarball can be
+# fetched, and apt is unaffected because it talks plain HTTP to the archive.
+UBUNTU_SOURCES=/etc/apt/sources.list.d/ubuntu.sources
+if [ -f "${UBUNTU_SOURCES}" ] && ! grep -qE "^Types:.*deb-src" "${UBUNTU_SOURCES}"; then
+    sed -i -E 's/^Types: deb[[:space:]]*$/Types: deb deb-src/' "${UBUNTU_SOURCES}"
+fi
+
 apt_retry update -qq
 apt_retry install -y --no-install-recommends \
+    dpkg-dev \
     build-essential \
     ca-certificates \
     curl \

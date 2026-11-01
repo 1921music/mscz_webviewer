@@ -24,16 +24,27 @@ target_include_directories(mscz_core PUBLIC
     ${MU_ROOT}/src/engraving
 )
 
-find_package(Freetype REQUIRED)
+if (MSCZ_VENDORED_THIRDPARTY)
+    # Set up by cmake/MsczThirdparty.cmake, which the root list file includes
+    # before the engine so the draw module picks up the same copies.
+    set(MSCZ_FT_LIB ${FREETYPE_LIBRARIES})
+    # The vendored HarfBuzz is one library covering both shaping and
+    # subsetting; see cmake/MsczThirdparty.cmake for why it cannot be two.
+    set(MSCZ_HB_SUBSET_LIB ${HARFBUZZ_LIBRARIES})
+    target_include_directories(mscz_core PRIVATE ${FREETYPE_INCLUDE_DIRS})
+else()
+    find_package(Freetype REQUIRED)
+    set(MSCZ_FT_LIB Freetype::Freetype)
 
-# hb-subset, for cutting fonts down to the glyphs a page uses. The wasm build
-# will use the vendored HarfBuzz amalgam instead; see vendor/thirdparty.
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(HARFBUZZ_SUBSET REQUIRED IMPORTED_TARGET harfbuzz-subset)
+    # hb-subset, for cutting fonts down to the glyphs a page uses.
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(HARFBUZZ_SUBSET REQUIRED IMPORTED_TARGET harfbuzz-subset)
+    set(MSCZ_HB_SUBSET_LIB PkgConfig::HARFBUZZ_SUBSET)
+endif()
 
 target_link_libraries(mscz_core PUBLIC
-    Freetype::Freetype
-    PkgConfig::HARFBUZZ_SUBSET
+    ${MSCZ_FT_LIB}
+    ${MSCZ_HB_SUBSET_LIB}
     muse::global
     muse::draw
     engraving
@@ -68,6 +79,68 @@ add_custom_command(
 )
 add_custom_target(mscz_resource_manifest DEPENDS "${MSCZ_RESOURCE_MANIFEST}")
 
+if (EMSCRIPTEN)
+    # The browser build. Plain C exports rather than embind, and no filesystem
+    # of any kind: resources are pushed in from JS. See src/mscz_wasm.cpp.
+    add_executable(mscz_wasm mscz_wasm.cpp)
+    target_link_libraries(mscz_wasm PRIVATE mscz_core)
+    # mscz-engine.js is emscripten's generated loader; web/mscz.js is the
+    # hand-written wrapper over it, so the names must not collide.
+    set_target_properties(mscz_wasm PROPERTIES OUTPUT_NAME mscz-engine)
+
+    target_link_options(mscz_wasm PRIVATE
+        -Oz
+        -flto
+        --no-entry
+        -sMODULARIZE=1
+        -sEXPORT_ES6=1
+        -sEXPORT_NAME=createMscz
+        # node is in here only so the build can be checked without a browser:
+        # this distro has no Chromium for playwright, and the check has to run
+        # somewhere. It costs a few KB of loader JS and nothing in the .wasm.
+        -sENVIRONMENT=web,worker,node
+        # Nothing opens a file, so there is no reason to carry a filesystem.
+        -sFILESYSTEM=0
+        # emmalloc is the smaller allocator and we make few, large allocations.
+        -sMALLOC=emmalloc
+        -sALLOW_MEMORY_GROWTH=1
+        -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8
+        -sINCOMING_MODULE_JS_API=
+        # A separate file mapping function index to mangled name. Nothing is
+        # added to the .wasm -- -Oz strips the name section -- but without it a
+        # size attribution can only say "function 7231".
+        --emit-symbol-map
+    )
+
+    # One target, one artefact set: the .wasm travels with its loader.
+    set_target_properties(mscz_wasm PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/web"
+    )
+
+    # The rest of what the page needs: the wrapper and the demo, and the
+    # resources laid out as files with an index saying what each is called.
+    # Nothing is baked into the wasm, which is the point -- what gets fetched
+    # is then a delivery decision rather than a build one.
+    set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
+    add_custom_command(TARGET mscz_wasm POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${CMAKE_CURRENT_LIST_DIR}/../web/mscz.js"
+                "${CMAKE_CURRENT_LIST_DIR}/../web/index.html"
+                "${MSCZ_WEB_DIR}/"
+        COMMAND ${Python3_EXECUTABLE} -I
+                "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-web-resources.py"
+                --manifest "${MSCZ_RESOURCE_MANIFEST}"
+                --root "${MU_ROOT}"
+                --out "${MSCZ_WEB_DIR}"
+        COMMENT "Laying out the web payload in ${MSCZ_WEB_DIR}"
+        VERBATIM
+    )
+    add_dependencies(mscz_wasm mscz_resource_manifest)
+endif()
+
+# The native probe opens files directly and takes a command line, neither of
+# which the browser build has.
+if (NOT EMSCRIPTEN)
 add_executable(mscz_probe
     mscz_probe.cpp
 )
@@ -94,4 +167,5 @@ if (MUSE_QT_SUPPORT)
         MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
     )
 endif()
+endif() # NOT EMSCRIPTEN
 

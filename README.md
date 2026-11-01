@@ -80,6 +80,7 @@ Phase 1 でネイティブの参照出力を取っておくのは、この差分
 
 **Phase 3 — emscripten で wasm 化**
 - サイズ最小化が要件。後述の方針に従う
+- → 実測結果は「Phase 3 の実測結果」節
 
 ## aria コードの取り込み方（Phase 2 以降）
 
@@ -224,6 +225,91 @@ engine に存在しない。置換表では解決せず engine 改造が必要�
 テキストもパス化すれば描画は構造的に正確になり、フォント解決はレイアウトにしか
 影響しなくなる（`GlyphOutlines` があるので実装は小さい）。**ただしテキスト選択が
 できなくなる。** 歌詞を選択したいという要件と矛盾するため採らない。
+
+## Phase 3 の実測結果（2026-11-01）
+
+**ブラウザで動く。そしてレイアウトはネイティブと完全一致した。**
+
+| | 要素数 | ネイティブ(Qt無し)との差 |
+|---|---|---|
+| Amazing_grace | 1,013 | **0** |
+| goldberg | 60,232 | **0** |
+
+比較対象を Qt ビルドのベースラインではなく**ネイティブの Qt 無しビルド**にしているのは、
+ここで問うているのが「emscripten の libc・32bit ポインタ・削った FreeType モジュール集合・
+`HB_TINY` が何かを動かしていないか」という別の問いだから。答えは一切動いていない。
+（Qt ビルドとの残差は Phase 2 で決着した字体置換の話で、それはそのまま残っている。）
+
+検証は `scripts/check-wasm.sh`。この distro には playwright 用の Chromium が無く、Windows 側には
+node が無いので、**emsdk 同梱の node** で動かしている。ブラウザ経路は同じ wasm に別のローダが
+付くだけで、`web/index.html` を開けば手で確認できる。
+
+### 速度
+
+| | 起動 | 読込+レイアウト | SVG 描画 |
+|---|---|---|---|
+| Amazing_grace（2ページ） | 130ms | 109ms | 38ms |
+| goldberg（120ページ） | 130ms | 2,221ms | 602ms |
+
+### サイズ
+
+| | raw | gzip | brotli |
+|---|---|---|---|
+| `mscz-engine.wasm` | 4,974KB | 1,766KB | **1,330KB** |
+| `mscz-engine.js`（emscripten のローダ） | 16KB | 6KB | 5KB |
+| `mscz.js`（自作ラッパ） | 5KB | 2KB | 2KB |
+| 必須リソース（31ファイル） | 5,231KB | 683KB | **566KB** |
+| 任意リソース（5ファイル） | 201KB | 75KB | 65KB |
+
+**初回ロードは brotli で約 1.86MB**（wasm + ローダ + 必須リソース）。2回目以降はキャッシュ。
+wasm の内訳は CODE 4,016KB / DATA 934KB。
+
+リソースが raw 5.2MB に対し brotli 566KB しかないのは、大半が JSON と XML で 10:1 近く縮むため。
+**配信を brotli にするかどうかで初回ロードが 4.6MB 変わる**ので、ここは必ず圧縮すること。
+
+### 必須と任意の線引き
+
+最大のリソースは `harmony_to_diagram.xml` の 2.5MB だが、これは**任意**に分類した。
+`dom/fret.cpp` が `FretDiagram` のレイアウト時に初めて読む遅延読み込みなので、
+フレットダイアグラムの無い譜では一切触られない。
+
+**フォントは同じようには遅延できない。** `FontsDatabase::addFont()` が登録時に
+`io::File::exists(path)` を確認し、その登録は起動時に一度だけ行われるため、
+起動前に渡っていなければそのファミリは登録されない。後から足すには
+`addAdditionalFonts(dir)` の経路が要る（未実装）。
+
+### 採った設計
+
+- **リソースは push。** エンジンはページのレイアウト途中で同期的にフォントを要求するが、
+  ブラウザのメインスレッドに同期 fetch は無い。だから JS が先に渡す
+  （`mscz_resource_add`）。非同期性は JS 側に閉じ、エンジンは「名前を渡すとバイト列が返る」
+  だけを知っている。
+- **`-sFILESYSTEM=0`。** MEMFS も含めて一切載せない。Phase 2 でファイルアクセスを
+  エンジンの外に出した結果がそのまま効いている。
+- **embind ではなく素の C エクスポート。** embind は型レジストリと RTTI を持ち込む。
+  実体は整数とポインタの十数個の関数なので `cwrap` で足りる。
+
+### 当てられなかった最適化
+
+**`-fno-rtti` は使えない。** `dynamic_cast` が 37 箇所あり、そのうち
+`rendering/score/tlayout.cpp` `tdraw.cpp` `harmonylayout.cpp` は表示経路の中。
+使うならエンジン側の改造が先。
+
+### サードパーティの入手経路（重要）
+
+**この環境では HTTPS のダウンロードが必ず末尾 32,768 バイトを失う。** ホストに依らず、
+GitHub でも zlib.net でも同じで、欠けた末尾を `Range` で取り直そうとしても
+切られた本文全体が返ってくる。したがって `emcc -sUSE_FREETYPE=1` も `-sUSE_ZLIB=1` も使えない。
+
+**apt だけが無傷で通る。** そのため zlib は `apt-get source zlib` で取得している
+（Ubuntu パッチ入り = CVE 修正入り）。`provision.sh` が deb-src を有効にする。
+
+もう一点、HarfBuzz の `src/harfbuzz-subset.cc` は `src/harfbuzz.cc` の**相棒ではなく、
+ほぼ上位集合**。両方リンクすると重複シンボルの山になる。欠けているのは FreeType 橋渡しの
+`hb-ft.cc` だけなので、我々は `harfbuzz-subset.cc + hb-ft.cc` の 1 ライブラリにしている。
+
+なお、FreeType のモジュールを削っても（`ftmodule-min.h`）**レイアウトは動かない**ことを
+確認した（goldberg は Qt ビルド比 3% のまま、ディストロ版 FreeType と同値）。
 
 ## wasm サイズを小さく保つ方針
 
