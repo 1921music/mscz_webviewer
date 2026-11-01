@@ -30,6 +30,20 @@ namespace {
 //! engraving.
 constexpr double kDeviceDpi = 1200.0;
 
+//! FontFaceFT's symbol mode scales a glyph's box and advance by constants its
+//! comments derive from dpi_f = 5.0, which is muse::draw::DPI / 72:
+//!
+//!     advance: linearHoriAdvance * dpi_f / 655360  ->  / 2048
+//!     bbox:    640.0 / dpi_f                       ->  / 2
+//!
+//! Both are baked in, and both are wrong for a provider measuring at 1200 dpi.
+//! Measured against QFontProvider, the advance and the box both come out
+//! exactly half -- 1.9974 to 2.0276 across sizes and glyphs, the spread being
+//! rounding -- while every non-symbol metric already agrees. So the correction
+//! is a factor of two, applied here rather than in FontFaceFT, whose constants
+//! are right for the DPI they were written for.
+constexpr double kSymbolMetricScale = 2.0;
+
 //! QFont::setPointSizeF scales by the device DPI; QFont::setPixelSize does
 //! not. Mirrors Font::toQFont, which prefers point size when both are set.
 int pixelSizeFor(const Font& f)
@@ -237,7 +251,12 @@ double CompatFontProvider::horizontalAdvance(const Font& f, const String& string
     for (const GlyphPos& g : glyphs) {
         advance += g.x_advance;
     }
-    return from_f26d6(advance);
+
+    double result = from_f26d6(advance);
+    if (Impl::isSymbolFont(f)) {
+        result *= kSymbolMetricScale;
+    }
+    return result;
 }
 
 double CompatFontProvider::horizontalAdvance(const Font& f, char32_t ucs4) const
@@ -271,12 +290,14 @@ muse::RectF CompatFontProvider::boundingRect(const Font& f, const String& string
     bool any = false;
     double left = 0.0, right = 0.0, top = 0.0, bottom = 0.0;
 
+    const double scale = Impl::isSymbolFont(f) ? kSymbolMetricScale : 1.0;
+
     for (const GlyphPos& g : glyphs) {
         const FBBox box = face->glyphBbox(g.idx);
-        const double x0 = pen + from_f26d6(box.left());
-        const double x1 = pen + from_f26d6(box.right());
-        const double y0 = from_f26d6(box.top());
-        const double y1 = from_f26d6(box.bottom());
+        const double x0 = pen + from_f26d6(box.left()) * scale;
+        const double x1 = pen + from_f26d6(box.right()) * scale;
+        const double y0 = from_f26d6(box.top()) * scale;
+        const double y1 = from_f26d6(box.bottom()) * scale;
 
         if (!any) {
             left = x0;
@@ -291,7 +312,7 @@ muse::RectF CompatFontProvider::boundingRect(const Font& f, const String& string
             bottom = std::max(bottom, y1);
         }
 
-        pen += from_f26d6(g.x_advance);
+        pen += from_f26d6(g.x_advance) * scale;
     }
 
     if (!any) {
@@ -317,9 +338,10 @@ muse::RectF CompatFontProvider::boundingRect(const Font& f, char32_t ucs4) const
     // box down, because the discretised box is not accurate enough. Loading
     // the face in symbol mode gets the outline box straight from FreeType, so
     // there is nothing to upscale and nothing to discretise.
+    const double scale = Impl::isSymbolFont(f) ? kSymbolMetricScale : 1.0;
     const FBBox box = face->glyphBbox(idx);
-    return RectF(from_f26d6(box.left()), from_f26d6(box.top()),
-                 from_f26d6(box.width()), from_f26d6(box.height()));
+    return RectF(from_f26d6(box.left()) * scale, from_f26d6(box.top()) * scale,
+                 from_f26d6(box.width()) * scale, from_f26d6(box.height()) * scale);
 }
 
 muse::RectF CompatFontProvider::tightBoundingRect(const Font& f, const String& string) const
