@@ -10,6 +10,8 @@ add_library(mscz_core STATIC
     fontsubset.h
     hostio.cpp
     hostio.h
+    compatfontprovider.cpp
+    compatfontprovider.h
 )
 
 target_include_directories(mscz_core PUBLIC
@@ -80,4 +82,16 @@ target_compile_definitions(mscz_probe PRIVATE
 )
 
 target_link_libraries(mscz_probe PRIVATE mscz_core)
+
+if (MUSE_QT_SUPPORT)
+    # Both providers exist only in the Qt build, which is the one place the
+    # port can be checked against what it was ported from.
+    add_executable(mscz_metriccmp mscz_metriccmp.cpp)
+    add_dependencies(mscz_metriccmp mscz_resource_manifest)
+    target_link_libraries(mscz_metriccmp PRIVATE mscz_core)
+    target_compile_definitions(mscz_metriccmp PRIVATE
+        MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+        MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+    )
+endif()
 
