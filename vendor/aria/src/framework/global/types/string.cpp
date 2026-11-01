@@ -30,6 +30,7 @@
 #include <iomanip>
 #include <iterator>
 #include <sstream>
+#include <type_traits>
 #include <utility>
 
 #ifdef SYSTEM_UTFCPP
@@ -231,40 +232,87 @@ UtfCodec::Encoding UtfCodec::xmlEncoding(const ByteArray& data)
     return Encoding::Unknown;
 }
 
+//! mscz_test: these four used utf8::utf8to16 and friends, which throw on
+//! malformed input, inside a try that logged and carried on. That works
+//! natively. It does not work in the wasm build, where emscripten disables
+//! exception catching by default: the throw reaches __cxa_throw, which is a JS
+//! import that calls abort(), and the module is dead -- so one score with a
+//! stray byte in it took the whole engine down, not just that score. Measured:
+//! a .mscz with 0xFF in a text element renders fine natively and aborts the
+//! wasm module.
+//!
+//! The fix is to not generate the exception. Malformed input is replaced with
+//! U+FFFD and then converted without checking, which is also better behaviour
+//! than before: the throwing version stopped at the first bad byte and left
+//! everything after it out, while this keeps the rest of the text.
+//!
+//! utf8::replace_invalid does the UTF-8 side and does not throw. The other two
+//! directions have no equivalent in utfcpp, so sanitise() below handles lone
+//! surrogates and out-of-range code points.
+namespace {
+//! Replaces anything that is not a scalar value with U+FFFD. Covers UTF-16
+//! (unpaired surrogates) and UTF-32 (surrogates and > U+10FFFF).
+template<typename View>
+std::u32string sanitise(const View& src)
+{
+    constexpr char32_t kReplacement = 0xFFFD;
+    std::u32string out;
+    out.reserve(src.size());
+
+    for (size_t i = 0; i < src.size(); ++i) {
+        char32_t cp = static_cast<char32_t>(static_cast<std::make_unsigned_t<typename View::value_type> >(src[i]));
+
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            // A high surrogate, which is only meaningful in UTF-16 and only
+            // when a low one follows.
+            if (sizeof(typename View::value_type) == 2 && i + 1 < src.size()) {
+                const char32_t low = static_cast<char32_t>(static_cast<uint16_t>(src[i + 1]));
+                if (low >= 0xDC00 && low <= 0xDFFF) {
+                    out += static_cast<char32_t>(0x10000 + ((cp - 0xD800) << 10) + (low - 0xDC00));
+                    ++i;
+                    continue;
+                }
+            }
+            out += kReplacement;
+            continue;
+        }
+
+        if ((cp >= 0xDC00 && cp <= 0xDFFF) || cp > 0x10FFFF) {
+            out += kReplacement;
+            continue;
+        }
+
+        out += cp;
+    }
+
+    return out;
+}
+} // namespace
+
 void UtfCodec::utf8to16(std::string_view src, std::u16string& dst)
 {
-    try {
-        utf8::utf8to16(src.begin(), src.end(), std::back_inserter(dst));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    std::string clean;
+    utf8::replace_invalid(src.begin(), src.end(), std::back_inserter(clean));
+    utf8::unchecked::utf8to16(clean.begin(), clean.end(), std::back_inserter(dst));
 }
 
 void UtfCodec::utf16to8(std::u16string_view src, std::string& dst)
 {
-    try {
-        utf8::utf16to8(src.begin(), src.end(), std::back_inserter(dst));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    const std::u32string clean = sanitise(src);
+    utf8::unchecked::utf32to8(clean.begin(), clean.end(), std::back_inserter(dst));
 }
 
 void UtfCodec::utf8to32(std::string_view src, std::u32string& dst)
 {
-    try {
-        utf8::utf8to32(src.begin(), src.end(), std::back_inserter(dst));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    std::string clean;
+    utf8::replace_invalid(src.begin(), src.end(), std::back_inserter(clean));
+    utf8::unchecked::utf8to32(clean.begin(), clean.end(), std::back_inserter(dst));
 }
 
 void UtfCodec::utf32to8(std::u32string_view src, std::string& dst)
 {
-    try {
-        utf8::utf32to8(src.begin(), src.end(), std::back_inserter(dst));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    const std::u32string clean = sanitise(src);
+    utf8::unchecked::utf32to8(clean.begin(), clean.end(), std::back_inserter(dst));
 }
 
 bool UtfCodec::isValidUtf8(const std::string_view& src)
@@ -274,11 +322,8 @@ bool UtfCodec::isValidUtf8(const std::string_view& src)
 
 void UtfCodec::replaceInvalid(std::string_view src, std::string& dst)
 {
-    try {
-        utf8::replace_invalid(src.begin(), src.end(), std::back_inserter(dst));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    // replace_invalid is the one that never throws; that is its whole point.
+    utf8::replace_invalid(src.begin(), src.end(), std::back_inserter(dst));
 }
 
 // ============================
@@ -592,11 +637,9 @@ ByteArray String::toUtf8() const
 {
     ByteArray ba;
     std::u16string_view v(constStr());
-    try {
-        utf8::utf16to8(v.begin(), v.end(), std::back_inserter(ba));
-    } catch (const std::exception& e) {
-        LOGE() << e.what();
-    }
+    // Sanitised rather than checked, for the reason given above UtfCodec.
+    const std::u32string clean = sanitise(v);
+    utf8::unchecked::utf32to8(clean.begin(), clean.end(), std::back_inserter(ba));
     return ba;
 }
 
