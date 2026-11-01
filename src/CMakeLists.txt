@@ -137,11 +137,19 @@ if (EMSCRIPTEN)
     # Nothing is baked into the wasm, which is the point -- what gets fetched
     # is then a delivery decision rather than a build one.
     set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
+
+    # configure_file rather than a POST_BUILD copy, because POST_BUILD only
+    # runs when the target itself relinks -- so editing the page and rebuilding
+    # left the old one being served, which cost an afternoon of wondering why
+    # the browser ignored a new URL parameter. configure_file instead makes
+    # these configure-time dependencies, so touching one re-runs cmake and the
+    # copy with it.
+    foreach(asset mscz.js index.html)
+        configure_file("${CMAKE_CURRENT_LIST_DIR}/../web/${asset}"
+                       "${MSCZ_WEB_DIR}/${asset}" COPYONLY)
+    endforeach()
+
     add_custom_command(TARGET mscz_wasm POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${CMAKE_CURRENT_LIST_DIR}/../web/mscz.js"
-                "${CMAKE_CURRENT_LIST_DIR}/../web/index.html"
-                "${MSCZ_WEB_DIR}/"
         COMMAND ${Python3_EXECUTABLE} -I
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-web-resources.py"
                 --manifest "${MSCZ_RESOURCE_MANIFEST}"

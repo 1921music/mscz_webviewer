@@ -111,6 +111,23 @@ for (const id of ['dpi', 'pathSymbols', 'embedFonts']) {
   document.getElementById(id).addEventListener('change', render)
 }
 
+// ?score=<url> loads one straight away, which is how the headless check drives
+// the page -- a file input cannot be filled from the command line.
+const wanted = new URLSearchParams(location.search).get('score')
+if (wanted) {
+  try {
+    const res = await fetch(wanted)
+    if (!res.ok) { throw new Error(`${res.status} ${res.statusText}`) }
+    const bytes = new Uint8Array(await res.arrayBuffer())
+    drop.hidden = true
+    score = mscz.open(bytes, wanted.split('/').pop())
+    window.__mscz = { mscz, score }
+    render()
+  } catch (e) {
+    status.textContent = `${wanted}: ${e.message}`
+  }
+}
+
 document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging') })
 document.addEventListener('dragleave', () => document.body.classList.remove('dragging'))
 document.addEventListener('drop', e => {

@@ -242,10 +242,49 @@ engine に存在しない。置換表では解決せず engine 改造が必要�
 `HB_TINY` が何かを動かしていないか」という別の問いだから。答えは一切動いていない。
 （Qt ビルドとの残差は Phase 2 で決着した字体置換の話で、それはそのまま残っている。）
 
-検証は `scripts/check-wasm.sh`。この distro には playwright 用の Chromium が無く、Windows 側には
-node が無いので、**emsdk 同梱の node** で動かしている。ブラウザ経路は同じ wasm に別のローダが
-付くだけで、`web/index.html` を開けば手で確認できる
-（playwright がある環境用に `scripts/check-wasm-browser.js` も置いてあるが、未実行）。
+検証は 2 本ある。
+
+**`scripts/check-wasm.sh`** — emsdk 同梱の node で動かし、レイアウトと SVG をネイティブと
+突き合わせる。レイアウトの一致を厳密に見るのはこちら。
+
+**`scripts/check-wasm-chrome.sh`** — **実ブラウザ**で動かす。この distro に Chromium は
+入らない（Ubuntu 26.04 は snap の移行パッケージしか持たず snapd が要る）し、
+playwright のダウンロードもここでは通らない。が、**Windows に Chrome があり WSL は
+Windows プロセスを起動できる**ので、そちらを使う。Chrome 自身の `--dump-dom` と
+`--screenshot` で済むので、Windows 側に CDP クライアントも node も要らない。
+WSL 内に bind したサーバは Windows から localhost で見えるので、
+配信は WSL・読み込みは Windows で成立する。
+
+実測（Amazing_grace）:
+
+```
+status line: 2 page(s), 149 KB of SVG, drawn in 0 ms
+<svg> elements in the document: 2
+<text> elements: 134      @font-face blocks: 4
+text runs: 134, of which notation glyphs: 0, lyrics present: True
+```
+
+**最後の行が「記号はパス」という既定を決めた理由そのものの検証。** SMuFL の
+コードポイントは私用領域（U+E000〜U+F8FF）にあるので、描画後のテキストにそれが
+現れれば記譜が選択対象になっているということ。両モードを native で出して比べると:
+
+| モード | テキストラン | うち記譜 |
+|---|---|---|
+| **path（既定）** | 94 | **0** |
+| font | 404 | **310** |
+
+font モードなら歌詞を選ぶときに記譜 310 ラン分がついてくる。**既定の選択は正しかった。**
+
+はまりどころ: web の資材は `POST_BUILD` でコピーしていたので、ターゲットが再リンク
+されないと**古いページが配信されたまま**になり、ブラウザが新しい URL パラメータを
+無視する理由を探すことになった。`configure_file` に変えて configure 時の依存にした。
+
+なお **`Bun.WebView` は使えなかった。** Windows に bun 1.3.14 があり
+`navigate` / `evaluate` / `click` / `screenshot` と E2E に必要な API は揃っているが、
+chrome バックエンドが `BUN_CHROME_PATH` でも `backend.path` でも
+`ERR_DLOPEN_FAILED`（Chrome の場所ではなく bun 側のネイティブライブラリのロード失敗）。
+webkit バックエンドは macOS 専用。操作を伴う E2E（ドラッグ＆ドロップ、チェックボックス、
+実際の選択操作）をやるならここが直ってからになる。
 
 ユーザ提供のサンプル 3 つ（`OverJoyed` 15ページ / `サウダージ` 2ページ / `サウダージ_demo` 23ページ）も
 wasm で開いて描画できることを確認した。UTF-8 のファイル名も問題ない。
