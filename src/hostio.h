@@ -183,10 +183,12 @@ std::shared_ptr<IResourceProvider> makeEmbeddedProvider(const EmbeddedResource* 
 //! wants it -- FontsDatabase::fontData() goes back to the file on each call by
 //! design, which is what makes its lazy loading lazy -- so a provider backed
 //! by slow storage is asked for the same font over and over. Measured on this
-//! machine with the resource tree on a Windows drive seen through WSL:
-//! goldberg's layout took over ten minutes, against 2.4 seconds with the same
-//! tree on the Linux filesystem. Caching removes the difference, and makes the
-//! native providers behave like the browser one, which holds its bytes anyway.
+//! machine with the resource tree on a Windows drive seen through WSL,
+//! goldberg's layout took 978 seconds -- of which only 12.9 were CPU, so
+//! nothing was computing, it was all waiting -- against 2.4 seconds with the
+//! same tree on the Linux filesystem. Caching removes the difference, and
+//! makes the native providers behave like the browser one, which holds its
+//! bytes anyway.
 //!
 //! Bounded on purpose. Anything larger than `maxEntryBytes` is passed straight
 //! through, so a large score still streams rather than becoming resident, and
