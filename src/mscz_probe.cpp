@@ -22,7 +22,7 @@ namespace {
 int usage()
 {
     std::fprintf(stderr,
-                 "usage: mscz_probe [--dpi N] [--out DIR] <score.mscz|.mscx>\n"
+                 "usage: mscz_probe [--dpi N] [--out DIR] [--page N] <score.mscz|.mscx>\n"
                  "       mscz_probe --fingerprint <score.mscz|.mscx>\n");
     return 2;
 }
@@ -49,6 +49,9 @@ int main(int argc, char* argv[])
     std::string manifest = MSCZ_RESOURCE_MANIFEST;
     bool fingerprint = false;
     bool svg = false;
+    //! 1-based; 0 means every page. A 120-page score is 8MB of SVG, and a
+    //! check that only compares the first page should not pay for the rest.
+    int onlyPage = 0;
     // Default to the self-contained pair. Embedding costs about 13KB brotli
     // per page, and symbols as paths keep a text selection from dragging the
     // notation along with it.
@@ -61,6 +64,8 @@ int main(int argc, char* argv[])
             dpi = std::atoi(argv[++i]);
         } else if (std::strcmp(a, "--out") == 0 && i + 1 < argc) {
             outDir = argv[++i];
+        } else if (std::strcmp(a, "--page") == 0 && i + 1 < argc) {
+            onlyPage = std::atoi(argv[++i]);
         } else if (std::strcmp(a, "--resources") == 0 && i + 1 < argc) {
             resourceRoot = argv[++i];
         } else if (std::strcmp(a, "--fingerprint") == 0) {
@@ -119,7 +124,15 @@ int main(int argc, char* argv[])
     const int pages = session->pageCount();
     std::printf("mscz_probe: %d page(s)\n", pages);
 
-    for (int page = 0; page < pages; ++page) {
+    if (onlyPage < 0 || onlyPage > pages) {
+        std::fprintf(stderr, "mscz_probe: no page %d; the score has %d\n", onlyPage, pages);
+        return 1;
+    }
+
+    const int first = onlyPage ? onlyPage - 1 : 0;
+    const int last = onlyPage ? onlyPage : pages;
+
+    for (int page = first; page < last; ++page) {
         char name[64];
 
         if (svg) {

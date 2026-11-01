@@ -56,6 +56,24 @@ for score in "${ARIA_DIR}/demos/Amazing_grace.mscz" "${ARIA_DIR}/demos/goldberg.
         --web "${WASM_DIR}/web" \
         --score "${score}" \
         --baseline "${reference}" || status=1
+
+    # And the drawing itself, byte for byte. The fingerprint is sorted, so it
+    # cannot see a difference in the order elements are painted in -- which is
+    # exactly what went wrong once, when an unstable std::sort in paint.cpp
+    # ordered equal-z items differently under libc++ than under libstdc++.
+    native_svg="${OUT}/${name}.native"
+    rm -rf "${native_svg}"
+    mkdir -p "${native_svg}"
+    "${NATIVE_DIR}/src/mscz_probe" --svg --dpi 300 --page 1 --out "${native_svg}" "${score}" >/dev/null 2>&1
+    if [ -f "${native_svg}/page-001.svg" ]; then
+        if cmp -s "${native_svg}/page-001.svg" "${OUT}/${name}-page-001.svg"; then
+            echo "page 1 SVG: identical to the native build"
+        else
+            echo "page 1 SVG: DIFFERS from the native build"
+            cmp "${native_svg}/page-001.svg" "${OUT}/${name}-page-001.svg" | head -1
+            status=1
+        fi
+    fi
     echo
 done
 

@@ -21,6 +21,8 @@
  */
 #include "paint.h"
 
+#include <algorithm>
+
 #include "draw/painter.h"
 #include "dom/score.h"
 #include "dom/page.h"
@@ -236,7 +238,18 @@ void Paint::paintItems(Painter& painter, const std::vector<EngravingItem*>& item
     TRACEFUNC;
     std::vector<EngravingItem*> sortedItems(items.begin(), items.end());
 
-    std::sort(sortedItems.begin(), sortedItems.end(), mu::engraving::elementLessThan);
+    // mscz_test: stable, not std::sort. elementLessThan calls a great many
+    // pairs equivalent -- same z, same selected, same visible -- and an
+    // unstable sort then orders those however the standard library happens to,
+    // which is not the same in libstdc++ and in libc++. That made the same
+    // score produce two different SVGs from the native and wasm builds: the
+    // same ink in a different order, which showed up as four extra <g>
+    // wrappers because the attribute coalescing splits differently.
+    //
+    // Stable means the order is discovery order, which is deterministic
+    // everywhere, so the output is reproducible and two builds can be
+    // diffed. Items that genuinely differ in z are unaffected.
+    std::stable_sort(sortedItems.begin(), sortedItems.end(), mu::engraving::elementLessThan);
 
     for (const EngravingItem* item : sortedItems) {
         if (!item->isInteractionAvailable()) {
