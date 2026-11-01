@@ -35,6 +35,8 @@
 namespace muse {
 class SystemInfo;
 class IGlobalConfiguration;
+class GlobalConfiguration;
+class GlobalConfiguration;
 class BaseApplication;
 class ITickerProvider;
 class GlobalModule : public modularity::IModuleSetup
@@ -55,9 +57,14 @@ public:
     void setLoggerLevel(const muse::logger::Level& level);
 
 private:
-    //! mscz_test: the interface, not the concrete class, because which
-    //! implementation it is now depends on whether Qt is in the build.
+    //! mscz_test: which implementation this is depends on whether Qt is in
+    //! the build, and init() is on the concrete class rather than the
+    //! interface, so the Qt build keeps the concrete type.
+#ifndef NO_QT_SUPPORT
+    std::shared_ptr<GlobalConfiguration> m_configuration;
+#else
     std::shared_ptr<IGlobalConfiguration> m_configuration;
+#endif
     std::shared_ptr<SystemInfo> m_systemInfo;
     std::shared_ptr<ITickerProvider> m_tickerProvider;
     Ticker m_asyncTicker;
