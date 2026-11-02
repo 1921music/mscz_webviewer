@@ -27,6 +27,7 @@
 #include "engraving/engravingmodule.h"
 #include "engraving/compat/mscxcompat.h"
 #include "engraving/compat/scoreaccess.h"
+#include "engraving/compat/engravingcompat.h"
 #include "engraving/infrastructure/mscreader.h"
 #include "engraving/rw/mscloader.h"
 #include "engraving/dom/engravingitem.h"
@@ -283,8 +284,12 @@ std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score,
         return nullptr;
     }
 
+    // The desktop application runs these outside MscLoader. Merely loading
+    // the XML skips old-score migrations (e.g. pre-4.6 VBox spacing).
+    mu::engraving::compat::EngravingCompat::doPreLayoutCompatIfNeeded(impl->masterScore.get());
     impl->masterScore->setLayoutAll();
     impl->masterScore->doLayout();
+    mu::engraving::compat::EngravingCompat::doPostLayoutCompatIfNeeded(impl->masterScore.get());
     impl->pageCount = static_cast<int>(impl->masterScore->pages().size());
 
     return std::unique_ptr<Session>(new Session(std::move(impl)));

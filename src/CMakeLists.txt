@@ -231,6 +231,15 @@ target_compile_definitions(mscz_spelling_test PRIVATE
     MSCZ_SPELLING_FIXTURE="${CMAKE_CURRENT_LIST_DIR}/../test/spelling.mscx"
 )
 
+add_executable(mscz_style_compat_test EXCLUDE_FROM_ALL ../test/style_compat.cpp)
+add_dependencies(mscz_style_compat_test mscz_resource_manifest)
+target_link_libraries(mscz_style_compat_test PRIVATE mscz_core)
+target_compile_definitions(mscz_style_compat_test PRIVATE
+    MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+    MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+    MSCZ_STYLE_COMPAT_FIXTURE="${CMAKE_CURRENT_LIST_DIR}/../test/browser_text.mscx"
+)
+
 if (MUSE_QT_SUPPORT)
     # Both providers exist only in the Qt build, which is the one place the
     # port can be checked against what it was ported from.

@@ -11,6 +11,9 @@
 #include "draw/internal/ifontsdatabase.h"
 #include "engraving/iengravingfontsprovider.h"
 #include "engraving/iengravingfont.h"
+#ifndef NO_QT_SUPPORT
+#include <QFontInfo>
+#endif
 
 using namespace muse;
 using namespace muse::draw;
@@ -64,6 +67,13 @@ int main()
         auto fdb = modularity::globalIoc()->resolve<IFontsDatabase>("mscz_test");
         auto music = modularity::globalIoc()->resolve<mu::engraving::IEngravingFontsProvider>("mscz_test");
         require(bool(fdb) && bool(music), "font services missing");
+#ifndef NO_QT_SUPPORT
+        for (const auto* family : {u"MuseJazz", u"MuseJazz Text"}) {
+            Font font(family, Font::Type::Text);
+            require(QFontInfo(font.toQFont()).family() == String(family).toQString(),
+                    "Qt MuseJazz resource was not initialized");
+        }
+#endif
         for (const auto* name : {u"MuseJazz Text", u"Petaluma Text", u"Petaluma Script", u"Inkpen2",
                                  u"Inkpen2 Script", u"Inkpen2 Chords", u"Reprise", u"Reprise Script", u"Reprise Chords"}) {
             FontDataKey key{Font::FontFamily(name)};

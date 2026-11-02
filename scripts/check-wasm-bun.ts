@@ -167,6 +167,9 @@ try {
     const state: any = await view.evaluate(inspect)
     assert(await view.evaluate("window.__mscz.score.viewTransposeSpelling === 'readable' && document.querySelector('#transposeSpelling').value === 'readable'"), `${name}: new score must default to readable mode`)
     assert(state.pages > 0 && state.pages === state.expected, `${name}: page count mismatch`)
+    if (name === 'Shade Of The Cedar Tree.mscz') {
+      assert.equal(state.pages, 1, 'pre-4.6 title-frame padding pushed Shade Of The Cedar Tree onto a second page')
+    }
     assert(state.paths > 0 && state.visible && state.invalid === 0, `${name}: invalid or empty rendering`)
     assert(state.uniqueIds && state.localReferences && state.separateFonts, `${name}: SVG definitions leak across pages`)
     assert.equal(state.notationText, 0, `${name}: music symbols remain selectable`)

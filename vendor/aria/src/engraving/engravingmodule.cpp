@@ -83,6 +83,7 @@ static void engraving_init_qrc()
     //! NOTE mscz_test: must match the .qrc list in CMakeLists.txt, which embeds
     //! only the fonts a default-style score needs. See vendor/aria/VENDOR.md.
     Q_INIT_RESOURCE(fonts_Leland);
+    Q_INIT_RESOURCE(fonts_MuseJazz);
     Q_INIT_RESOURCE(fonts_Campania);
     Q_INIT_RESOURCE(fonts_Edwin);
     Q_INIT_RESOURCE(fonts_MScoreSmall);
