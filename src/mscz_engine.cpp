@@ -25,11 +25,9 @@
 #include "draw/painter.h"
 
 #include "engraving/engravingmodule.h"
-#include "engraving/compat/mscxcompat.h"
-#include "engraving/compat/scoreaccess.h"
+#include "engraving/engravingproject.h"
 #include "engraving/compat/engravingcompat.h"
 #include "engraving/infrastructure/mscreader.h"
-#include "engraving/rw/mscloader.h"
 #include "engraving/dom/engravingitem.h"
 #include "engraving/dom/instrtemplate.h"
 #include "engraving/dom/masterscore.h"
@@ -205,7 +203,8 @@ public:
     ScoreInfo info;
     //! Outlives the score: the ZIP layer reads through it on demand.
     std::unique_ptr<StreamDevice> device;
-    std::unique_ptr<mu::engraving::MasterScore> masterScore;
+    mu::engraving::EngravingProjectPtr project;
+    mu::engraving::MasterScore* masterScore() const { return project->masterScore(); }
     int pageCount = 0;
     int transposeSemitones = 0;
     TransposeSpelling transposeSpelling = TransposeSpelling::Readable;
@@ -245,9 +244,8 @@ std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score,
     auto impl = std::make_unique<Impl>();
     impl->source = std::move(score);
     impl->info = info;
-    impl->masterScore = std::unique_ptr<mu::engraving::MasterScore>(
-        mu::engraving::compat::ScoreAccess::createMasterScoreWithDefaultStyle(muse::modularity::globalCtx()));
-    if (!impl->masterScore) {
+    impl->project = mu::engraving::EngravingProject::create(muse::modularity::globalCtx());
+    if (!impl->masterScore()) {
         error = "Could not create a score.";
         return nullptr;
     }
@@ -270,27 +268,37 @@ std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score,
 
     // Not optional: MscLoader reads fileInfo()->fileName() while loading, and
     // a score opened from a stream has no file to take it from.
-    impl->masterScore->setFileInfoProvider(makeStreamFileInfoProvider(info));
+    impl->project->setFileInfoProvider(makeStreamFileInfoProvider(info));
 
-    mu::engraving::MscLoader loader;
-    ret = loader.loadMscz(impl->masterScore.get(), reader, nullptr, false);
+    ret = impl->project->loadMscz(reader, nullptr, false);
     if (!ret) {
         // The second chance desktop MuseScore's "open anyway" gives a file
         // written by a newer version.
-        ret = loader.loadMscz(impl->masterScore.get(), reader, nullptr, true);
+        ret = impl->project->loadMscz(reader, nullptr, true);
     }
     if (!ret) {
         error = "Could not read the score: " + ret.text();
         return nullptr;
     }
 
-    // The desktop application runs these outside MscLoader. Merely loading
-    // the XML skips old-score migrations (e.g. pre-4.6 VBox spacing).
-    mu::engraving::compat::EngravingCompat::doPreLayoutCompatIfNeeded(impl->masterScore.get());
-    impl->masterScore->setLayoutAll();
-    impl->masterScore->doLayout();
-    mu::engraving::compat::EngravingCompat::doPostLayoutCompatIfNeeded(impl->masterScore.get());
-    impl->pageCount = static_cast<int>(impl->masterScore->pages().size());
+    // Follow NotationProject::doLoad, including EngravingProject's final
+    // padding-table rebuild and tie cleanup after the styles and parts load.
+    // Lock updates as the desktop does, so setup does not lay out before compat.
+    auto masterScore = impl->masterScore();
+    masterScore->lockUpdates(true);
+    // Keep the viewer's existing ability to display recoverable scores.
+    ret = impl->project->setupMasterScore(/*forceMode=*/true);
+    if (!ret) {
+        error = "Could not prepare the score: " + ret.text();
+        return nullptr;
+    }
+    mu::engraving::compat::EngravingCompat::doPreLayoutCompatIfNeeded(masterScore);
+    masterScore->updateCapo(/*ignoreNotationUpdate=*/true);
+    masterScore->lockUpdates(false);
+    masterScore->setLayoutAll();
+    masterScore->update();
+    mu::engraving::compat::EngravingCompat::doPostLayoutCompatIfNeeded(masterScore);
+    impl->pageCount = static_cast<int>(masterScore->pages().size());
 
     return std::unique_ptr<Session>(new Session(std::move(impl)));
 }
@@ -359,7 +367,7 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::s
     }
     if (semitones != 0) {
         using namespace mu::engraving;
-        auto score = candidate->m_impl->masterScore.get();
+        auto score = candidate->m_impl->masterScore();
         if (score->nstaves() == 0) {
             error = "The score has no staves to transpose.";
             return false;
@@ -395,7 +403,7 @@ bool Session::layoutFingerprint(std::vector<std::string>& out, std::string& erro
 {
     out.clear();
 
-    const mu::engraving::Score* score = m_impl->masterScore.get();
+    const mu::engraving::Score* score = m_impl->masterScore();
     if (!score) {
         error = "The score is closed.";
         return false;
@@ -452,7 +460,7 @@ bool Session::renderPageSvg(int pageIndex, int dpi, SvgSymbols symbols, SvgFonts
         return false;
     }
 
-    mu::engraving::Score* score = m_impl->masterScore.get();
+    mu::engraving::Score* score = m_impl->masterScore();
 
     mu::engraving::rendering::IScoreRenderer::ScorePaintOptions options;
     options.fromPage = pageIndex;
@@ -500,7 +508,7 @@ bool Session::renderPage(int pageIndex, int dpi, PageImage& out, std::string& er
         return false;
     }
 
-    mu::engraving::Score* score = m_impl->masterScore.get();
+    mu::engraving::Score* score = m_impl->masterScore();
 
     mu::engraving::rendering::IScoreRenderer::ScorePaintOptions options;
     options.fromPage = pageIndex;

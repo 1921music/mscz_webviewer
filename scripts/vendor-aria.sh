@@ -156,6 +156,8 @@ Record every deliberate change here as it is made, so the reason survives.
 - Embed MuseJazz and MuseJazz Text with their metadata and OFL license. Current downloaded provenance is in fonts/musejazz/SOURCE.txt.
 - Substitute Petaluma, Inkpen/Inkpen2, Reprise and Finale jazz families with MuseJazz; resolve text aliases in the Qt-free font database as well as Qt.
 - Initialize the MuseJazz Qt resource explicitly, matching its QRC registration.
+- Include rehearsal-mark alignment in the pre-4.7 style-position conversion, preserving legacy right alignment and avoiding extra collision-driven system spacing.
+- Register legacy-style-defaults-v450.mss in engraving.qrc; DefaultStyle references this existing file, but MuseScore v4.7.5 omitted its resource alias.
 EOF
 
 echo

@@ -170,6 +170,9 @@ try {
     if (name === 'Shade Of The Cedar Tree.mscz') {
       assert.equal(state.pages, 1, 'pre-4.6 title-frame padding pushed Shade Of The Cedar Tree onto a second page')
     }
+    if (name === 'Morning_Gm.mscz') {
+      assert.equal(state.pages, 1, 'legacy rehearsal alignment pushed Morning_Gm onto a second page')
+    }
     assert(state.paths > 0 && state.visible && state.invalid === 0, `${name}: invalid or empty rendering`)
     assert(state.uniqueIds && state.localReferences && state.separateFonts, `${name}: SVG definitions leak across pages`)
     assert.equal(state.notationText, 0, `${name}: music symbols remain selectable`)

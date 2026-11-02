@@ -9,6 +9,7 @@
         <file alias="engraving/styles/migration-306-style-Leland.mss">data/styles/migration-306-style-Leland.mss</file>
         <file alias="engraving/styles/migration-306-style-Edwin.mss">data/styles/migration-306-style-Edwin.mss</file>
         <file alias="engraving/styles/legacy-style-defaults-v302.mss">data/styles/legacy-style-defaults-v302.mss</file>
+        <file alias="engraving/styles/legacy-style-defaults-v450.mss">data/styles/legacy-style-defaults-v450.mss</file>
         <file alias="engraving/styles/gp-style.mss">data/styles/gp-style.mss</file>
         <file>data/harmony_to_diagram.xml</file>
         <file alias="engraving/styles/stdchords.xml">data/chords/stdchords.xml</file>

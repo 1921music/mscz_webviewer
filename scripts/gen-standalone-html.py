@@ -9,12 +9,19 @@ needed. The source page and wrapper remain shared with the HTTP version.
 """
 import argparse
 import base64
+import gzip
 import json
 from pathlib import Path
 
 
 def encoded(data):
     return base64.b64encode(data).decode("ascii")
+
+
+def compressed(data):
+    # Reproducible output; the browser consumes the standard gzip stream via
+    # DecompressionStream. No runtime JavaScript compression library needed.
+    return encoded(gzip.compress(data, compresslevel=9, mtime=0))
 
 
 def module_url(source):
@@ -41,8 +48,10 @@ def main():
                            "from './mscz-engine.js'", f"from '{engine}'")
     wrapper = replace_once(wrapper, "from './text-fonts.js'", f"from '{text_fonts}'")
     html = (web / "index.html").read_text(encoding="utf-8")
-    html = replace_once(html, "from './mscz.js'", f"from '{module_url(wrapper)}'")
-    html = replace_once(html, "load({ base: '.', textFonts })", "load({ ...embeddedOptions(), textFonts })")
+    imports = 'load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED'
+    html = replace_once(html, f"import {{ {imports} }} from './mscz.js'",
+                        f"const {{ {imports} }} = await import(await embeddedModule())")
+    html = replace_once(html, "load({ base: '.', textFonts })", "load({ ...await embeddedOptions(), textFonts })")
 
     resources = []
     names = set()
@@ -53,21 +62,50 @@ def main():
         if entry["name"] in names:
             raise ValueError(f"Duplicate resource: {entry['name']}")
         names.add(entry["name"])
-        resources.append({"name": entry["name"], "data": encoded(path.read_bytes())})
-    payload = {"wasm": encoded((web / "mscz-engine.wasm").read_bytes()), "resources": resources}
+        resources.append({"name": entry["name"], "data": compressed(path.read_bytes())})
+    payload = {"module": compressed(wrapper.encode("utf-8")),
+               "wasm": compressed((web / "mscz-engine.wasm").read_bytes()), "resources": resources}
     # Escape raw HTML delimiters even if a resource alias later contains one.
     data = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).replace("<", "\\u003c")
     bootstrap = """
 // All engine assets are in this document. Reading a score uses the File API.
-function embeddedOptions () {
-  const element = document.getElementById('mscz-embedded')
-  const payload = JSON.parse(element.textContent)
-  element.remove()
-  const decode = value => Uint8Array.from(atob(value), c => c.charCodeAt(0))
-  return {
-    wasmBinary: decode(payload.wasm),
-    resources: payload.resources.map(r => ({ name: r.name, bytes: decode(r.data) }))
+let embeddedPayload
+function readEmbeddedPayload () {
+  if (!embeddedPayload) {
+    const element = document.getElementById('mscz-embedded')
+    embeddedPayload = JSON.parse(element.textContent)
+    element.remove()
   }
+  return embeddedPayload
+}
+async function decodeEmbedded (value) {
+  const bytes = Uint8Array.from(atob(value), c => c.charCodeAt(0))
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+  return new Uint8Array(await new Response(stream).arrayBuffer())
+}
+async function embeddedModule () {
+  const payload = readEmbeddedPayload()
+  const bytes = await decodeEmbedded(payload.module)
+  delete payload.module
+  // Keep imports as data: modules, including on file:// with networking off.
+  // Chunking avoids the argument-count limit of String.fromCharCode(...).
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 32768) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 32768))
+  }
+  return 'data:text/javascript;base64,' + btoa(binary)
+}
+async function embeddedOptions () {
+  const payload = readEmbeddedPayload()
+  const wasmBinary = await decodeEmbedded(payload.wasm)
+  delete payload.wasm
+  const resources = []
+  for (const resource of payload.resources) {
+    resources.push({ name: resource.name, bytes: await decodeEmbedded(resource.data) })
+    delete resource.data
+  }
+  embeddedPayload = null
+  return { wasmBinary, resources }
 }
 """
     html = replace_once(html, '<script type="module">',

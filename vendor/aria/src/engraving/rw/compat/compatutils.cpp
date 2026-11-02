@@ -117,6 +117,7 @@ const std::map<Sid, Sid> CompatUtils::ALIGN_VALS_TO_CONVERT {
     { Sid::translatorAlign, Sid::translatorPosition },
     { Sid::tupletAlign, Sid::tupletPosition },
     { Sid::systemTextAlign, Sid::systemTextPosition },
+    { Sid::rehearsalMarkAlign, Sid::rehearsalMarkPosition },
     { Sid::chordSymbolAAlign, Sid::chordSymPosition },
     { Sid::repeatLeftAlign, Sid::repeatLeftPosition },
     { Sid::repeatRightAlign, Sid::repeatRightPosition },
