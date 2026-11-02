@@ -42,6 +42,25 @@ const char* lineJoinName(PenJoinStyle style)
     return "miter";
 }
 
+// MuseJazz Text's legacy chord alphabet predates SMuFL. Its old PUA
+// codepoints mean different symbols in Leland, so substitute by meaning.
+// Source: engraving/data/chords/{chords_jazz,chords_std}.xml.
+char32_t museJazzChordFallback(char32_t cp)
+{
+    switch (cp) {
+    case 0xE10C: return 0xED62; // sharp
+    case 0xE10D: return 0xED60; // flat
+    case 0xE10E: return 0xED61; // natural
+    case 0xE186: return 0xE872; // augmented
+    case 0xE18A: return 0xE873; // major seventh
+    case 0xE18E: return 0xE870; // diminished
+    case 0xE18F: return 0xE871; // half diminished
+    case 0xE263: return 0xED63; // double sharp
+    case 0xE264: return 0xED64; // double flat
+    default: return cp;
+    }
+}
+
 } // namespace
 
 namespace mscz {
@@ -598,6 +617,71 @@ void SvgPaintProvider::drawText(const PointF& point, const String& text)
         return;
     }
 
+    // TextBase sends inline SMuFL symbols through drawText, not drawSymbol.
+    // Split only at music symbols; ordinary text remains one shaped run.
+    if (m_symbolMode == SymbolMode::Path) {
+        const std::u32string chars = text.toStdU32String();
+        size_t start = 0;
+        for (size_t i = 0; i < chars.size(); ++i) {
+            const char32_t cp = chars[i];
+            if (!((cp >= 0xE000 && cp <= 0xF8FF) || (cp >= 0x1D100 && cp <= 0x1D1FF))) {
+                continue;
+            }
+            const auto position = [&](size_t index) {
+                const String prefix = String::fromUcs4(chars.data(), index);
+                return PointF(point.x() + m_glyphs.advanceEm(m_state.font, prefix)
+                              * m_state.font.pointSizeF() * kFontSizeScale, point.y());
+            };
+            Font symbolFont = m_state.font;
+            char32_t symbolCode = cp;
+            if (!m_glyphs.glyph(symbolFont, cp).valid) {
+                if (symbolFont.family() == Font::FontFamily(u"MuseJazz Text") && (cp == 0xE185 || cp == 0xE18B)) {
+                    // These legacy glyphs are the words "sus" and "add".
+                    // Keep the replacement words selectable, as in chords_std.
+                    if (i > start) {
+                        drawText(position(start), String::fromUcs4(chars.data() + start, i - start));
+                    }
+                    drawText(position(i), cp == 0xE185 ? String(u"sus") : String(u"add"));
+                    start = i + 1;
+                    continue;
+                }
+                // Chord names can label a music-text font as Text/Harmony.
+                // If that family is absent, those types fall back to Edwin,
+                // which has no SMuFL glyphs. Resolve this symbol as music text
+                // so the database selects its bundled music-text fallback.
+                symbolFont.setFamily(symbolFont.family(), Font::Type::MusicSymbolText);
+                if (symbolFont.family() == Font::FontFamily(u"MuseJazz Text")) {
+                    symbolCode = museJazzChordFallback(cp);
+                }
+                if (!m_glyphs.glyph(symbolFont, symbolCode).valid) {
+                    // The text companion omits some full-size SMuFL symbols,
+                    // such as coda. Try the bundled music face for those.
+                    symbolFont.setFamily(u"Leland", Font::Type::MusicSymbol);
+                    if (!m_glyphs.glyph(symbolFont, symbolCode).valid) {
+                        continue;
+                    }
+                }
+            }
+            if (i > start) {
+                drawText(position(start), String::fromUcs4(chars.data() + start, i - start));
+            }
+            const PointF symbolPosition = position(i);
+            const Font saved = m_state.font;
+            m_state.font = symbolFont;
+            drawSymbolAsPath(symbolPosition, symbolCode);
+            m_state.font = saved;
+            start = i + 1;
+        }
+        if (start != 0) {
+            if (start < chars.size()) {
+                drawText(PointF(point.x() + m_glyphs.advanceEm(m_state.font, String::fromUcs4(chars.data(), start))
+                               * m_state.font.pointSizeF() * kFontSizeScale, point.y()),
+                         String::fromUcs4(chars.data() + start, chars.size() - start));
+            }
+            return;
+        }
+    }
+
     noteUsedGlyphs(text);
 
     // Qt places the baseline at the given point, and so does SVG <text> by
@@ -640,8 +724,7 @@ bool SvgPaintProvider::drawSymbolAsPath(const PointF& point, char32_t ucs4Code)
         return true;    // a blank glyph; nothing to draw, but not a failure
     }
 
-    const std::string family = m_state.font.family().id().toStdString();
-    const auto key = std::make_pair(family, ucs4Code);
+    const auto key = std::make_pair(FontSubset::keyFor(m_state.font), ucs4Code);
 
     auto known = m_glyphIds.find(key);
     if (known == m_glyphIds.end()) {

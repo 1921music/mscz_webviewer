@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<museScore version="4.60">
+  <programVersion>4.6.0</programVersion>
+  <Score>
+    <Division>480</Division>
+    <Style><concertPitch>1</concertPitch></Style>
+    <Part>
+      <Staff id="1"><StaffType group="pitched"><name>stdNormal</name></StaffType></Staff>
+      <Instrument id="piano"><trackName>Piano</trackName><minPitchP>0</minPitchP><maxPitchP>127</maxPitchP><minPitchA>0</minPitchA><maxPitchA>127</maxPitchA><Channel><program value="0"/></Channel></Instrument>
+    </Part>
+    <Staff id="1">
+      <Measure>
+        <voice>
+          <KeySig><concertKey>0</concertKey><actualKey>0</actualKey></KeySig>
+          <TimeSig><sigN>4</sigN><sigD>4</sigD></TimeSig>
+          <Harmony><harmonyInfo><root>18</root><name>7</name></harmonyInfo></Harmony>
+          <Chord><durationType>quarter</durationType><Note><pitch>68</pitch><tpc>22</tpc></Note></Chord>
+          <Chord><durationType>eighth</durationType><Note><pitch>67</pitch><tpc>15</tpc></Note></Chord>
+          <Chord><durationType>eighth</durationType><Note><pitch>68</pitch><tpc>22</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><Note><pitch>69</pitch><tpc>17</tpc></Note></Chord>
+        </voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <KeySig><concertKey>1</concertKey><actualKey>1</actualKey></KeySig>
+          <Harmony><harmonyInfo><root>15</root><name>7</name></harmonyInfo></Harmony>
+          <Chord><durationType>whole</durationType><Note><pitch>71</pitch><tpc>19</tpc></Note></Chord>
+        </voice>
+      </Measure>
+      <Measure>
+        <voice>
+          <KeySig><concertKey>0</concertKey><actualKey>0</actualKey><mode>minor</mode></KeySig>
+          <Rest><durationType>quarter</durationType></Rest>
+          <Rest><durationType>eighth</durationType></Rest>
+          <Chord><durationType>eighth</durationType><Note><pitch>68</pitch><tpc>22</tpc></Note></Chord>
+          <Chord><durationType>half</durationType><Note><pitch>69</pitch><tpc>17</tpc></Note></Chord>
+        </voice>
+      </Measure>
+    </Staff>
+  </Score>
+</museScore>

@@ -82,6 +82,97 @@ Phase 1 でネイティブの参照出力を取っておくのは、この差分
 - サイズ最小化が要件。後述の方針に従う
 - → 実測結果は「Phase 3 の実測結果」節
 
+## 単一HTML版（file:// 対応）
+
+`scripts/build-wasm.sh` は通常のHTTP用ペイロードに加え、
+`<build>/web/index-standalone.html` も生成する。このHTMLだけをコピーしてEdgeなどで開き、
+「ファイルの選択」またはドラッグ＆ドロップで `.mscz` を読み込める。サーバーは不要。
+JavaScript、wasm、フォント、core/optionalの全リソースをBase64で内包し、起動時の外部取得は行わない。
+譜面自体はHTMLに含めず、ユーザーが選択したファイルを端末内で処理する。
+
+生成元は共通の `web/index.html` と `web/mscz.js`。HTMLまたはラッパーの変更時も、
+次のビルドで単一版を再生成する。既存のビルド済みペイロードからの再梱包も可能:
+
+```bash
+python3 scripts/gen-standalone-html.py --web build/web
+```
+
+Windows上の出力は `G:\work\20261029\podium\podium\build\web\index-standalone.html`。
+WSLビルド後に配置する場合:
+
+```bash
+cp -r ~/build/mscz-wasm/web/. /mnt/g/work/20261029/podium/podium/build/web/
+```
+
+オフラインでのfile://検証（Windows Bun + Edge）:
+
+```powershell
+& C:\Tools\bun.exe scripts/check-wasm-bun.ts --standalone build/web/index-standalone.html
+```
+
+HTMLを空の検証フォルダーにコピーし、HTTPサーバーを起動せず、Edgeのネットワークを
+オフラインにしてサンプル5件の表示・移調・モード切替・原調復帰を確認する。
+追加の依存ファイルへのリクエストがないことも検証する。
+
+## 表示用の移調（2026-11-02）
+
+半音単位で上下し、原調に戻せる。ブラウザ上部の「− 半音」「＋ 半音」
+「原調に戻す」で操作し、現在の半音数を表示する。範囲は原調から −12〜+12 半音。
+譜面を開く前や移調中は操作を無効にし、範囲の端ではそれ以上進むボタンを無効にする。
+別の譜面を開くと原調から始まる。
+
+- C++: `Session::setViewTransposeSemitones(int, error)` と `viewTransposeSemitones()`。
+- 表記方針も変更する場合は `Session::setViewTranspose(int, TransposeSpelling, error)`。
+  `TransposeSpelling::Preserve`（既定）と `Readable` を選べる。
+- wasm: `mscz_set_view_transpose_semitones` と `mscz_view_transpose_semitones`。
+- JavaScript:
+
+```js
+score.setViewTransposeSemitones(2) // 原調から +2 半音
+score.setViewTransposeSemitones(-1) // 原調から -1 半音（現在の表示からの差分ではない）
+score.setViewTransposeSpelling('readable') // 現在の半音数で読みやすさ優先に切替
+score.setViewTransposeSemitones(2, 'preserve') // 半音数と表記方針を同時指定
+score.clearViewTranspose() // 原調に戻す
+console.log(score.viewTransposeSemitones) // 0
+```
+
+エンジンの移調処理で音符・調号・コードネームを変更し、打楽器は対象外とする。
+読み取り専用の元ストリームを保持し、操作のたびに原譜を読み直して候補スコアへ適用する。
+候補のレイアウトが完成してから表示用スコアと入れ替えるため、元ファイルを変更せず、
+操作順による異名同音の累積を避け、失敗した場合も現在の表示を保持する。
+このため大きな譜面では移調ごとに読み込み・レイアウト時間がかかる。
+
+表記方針は「元譜維持」「読みやすさ優先」の2モード。どちらも標準の調号は
+♯・♭6個以内とし、6個同士ならG♭側を選ぶ。曲中の調号変更にも適用する。
+原調（0半音）はこの補正も行わず元譜をそのまま再現する。
+
+- 元譜維持: 選択した調号に沿う音程で元の綴りを機械的に変換する。
+  エンジン既存のダブル記号の簡略化は維持する。
+- 読みやすさ優先: 調号・元の綴り・コードの構成音・隣接音の動きからTPCを評価する。
+  和声の綴りの不一致100、調に対して余計に不自然な綴り15、ダブル記号12、
+  不自然な半音階8、同音名の記号交替5、臨時記号3、中立文脈でのG♭/A♯1を初期コストにする。
+  元の綴りの変更は4。短く弱拍にある半音アプローチではダブル記号を40、
+  和声の不一致を1とする。コード候補ごとに声部の綴りを動的計画法で評価する。
+  元のコードとの関係が明確な和声音は保護し、B調のD♯7をE♭7に直すことはしない。
+
+これは元譜を根拠にした保守的な初版で、一般的な和声解析・フレーズ認識を行うものではない。
+タイと多声音の音程構造は保持する。コード品質、テンション指定、実音は変更しない。
+F♯/B♭の単音としての弱い優遇より、調号と和声の整合性を優先する。
+モードを切り替える場合も常に元譜から再計算し、前の表示から補正を累積しない。
+
+ネイティブの回帰テスト（WSL、Qt 付きは `mscz-host` に変更）:
+
+```bash
+cmake --build ~/build/mscz-noqt --target mscz_transpose_test
+~/build/mscz-noqt/src/mscz_transpose_test /mnt/g/work/20261029/podium/sample/*.mscz
+cmake --build ~/build/mscz-noqt --target mscz_spelling_test
+~/build/mscz-noqt/src/mscz_spelling_test
+```
+
+半音・全音・増4度・オクターブの上下、絶対指定の再現性、不正な範囲指定時の表示保持、
+原調に戻した際のページ数・レイアウト指紋・全ページ SVG の完全一致を検証する。
+`scripts/check-wasm-bun.ts` では実際のボタン操作、範囲の端、別譜面への切替も確認する。
+
 ## aria コードの取り込み方（Phase 2 以降）
 
 **Phase 1 だけは aria を無改変で使う**（参照出力を取るため。ルートの
@@ -884,6 +975,76 @@ MuseScore 自身も 1 リポジトリに `thirdparty/` を各種ライセンス�
 （法務の確認は別途必要。ここはライセンス本文に即した整理）
 
 ## 開発環境（WSL2: mscz_dev）
+
+### このチェックアウトでの開発再開
+
+Windows の `G:\work\20261029\podium\podium` は WSL から
+`/mnt/g/work/20261029/podium/podium` として使う。ソースはここを直接編集し、
+ビルド生成物と ccache は Linux 側のホームディレクトリに置く。
+
+```powershell
+wsl -d mscz_dev --cd /mnt/g/work/20261029/podium/podium
+```
+
+開いた WSL シェルで:
+
+```bash
+# Qt 付きの参照ビルド
+bash scripts/build-host.sh
+
+# Qt 非依存のネイティブ版
+bash scripts/build-noqt.sh
+
+# WebAssembly の配信用ビルド
+bash scripts/build-wasm.sh
+
+# ブラウザで確認: http://localhost:8000
+python3 -m http.server 8000 --bind 127.0.0.1 --directory ~/build/mscz-wasm/web
+```
+
+生成先はそれぞれ `~/build/mscz-host`、`~/build/mscz-noqt`、
+`~/build/mscz-wasm`。Qt 非依存版と wasm のビルドログは生成先と同名の
+`.log` ファイル（例: `~/build/mscz-wasm.log`）に残る。
+既存の比較スクリプトが参照する `aria/demos` はこのリポジトリに同梱されていない。
+比較するときは別途譜面を用意し、`ARIA_DIR` でその `demos` の親を指定する。
+
+#### Windows の Bun + Edge で E2E を実行
+
+`C:\Tools\bun.exe`（確認時 1.4.4）の `Bun.WebView` と既存の Edge を使う。
+Windows では WebView2 ではなく CDP 経由で Edge を操作する。
+標準の pipe 起動はこの環境で `Chrome process closed the pipe` になるため、
+専用の headless Edge を起動し、自動割当されたローカルポートに接続する。
+API の仕様は [Bun WebView 公式ドキュメント](https://bun.com/docs/runtime/webview) を参照。
+
+このリポジトリのルートで PowerShell から:
+
+```powershell
+# WSL のビルド成果物を Windows 側の検証用ディレクトリへコピー
+wsl -d mscz_dev -- bash -lc 'mkdir -p /mnt/g/work/20261029/podium/podium/build/web; cp -r /home/dev/build/mscz-wasm/web/. /mnt/g/work/20261029/podium/podium/build/web/'
+& C:\Tools\bun.exe scripts/check-wasm-bun.ts
+```
+
+既定では `../sample/*.mscz` をすべて読み込み、ページ数・SVG 描画・
+ファイル入力・記号とフォント埋め込みの切替・DPI 変更を検証する。
+スクリーンショットと結果 JSON は `build/out/bun-e2e/` に保存する。
+`--web DIR`、`--samples DIR`、`--browser EXE` でパスを変更できる。
+パス描画モードでは、通常の `drawSymbol` に加え、本文やコードネームの
+`drawText` に含まれる音楽記号もパス化する。未同梱の MuseJazz Text の旧コード記号は
+`chords_jazz.xml` / `chords_std.xml` の対応に従って同じ意味の記号へ置換し、
+`sus` / `add` は選択可能な文字列にする。通常の文章は `<text>` のまま残す。
+検証では全ページの `notationText` がゼロであることを要求し、二重登録を含む
+すべての console error と未捕捉例外を失敗として扱う。
+`--baselines DIR` を渡すと、その中の `<譜面名>.wasm.fingerprint` とも比較する。
+
+初期化時は `GlobalModule::setApplication` でアプリケーションを渡し、標準モジュールの
+サービス登録後、import の解決前にファイルシステムとフォントプロバイダを明示的に
+差し替える。重複登録が拒否される副作用で実装を選ぶことはしない。
+ネイティブの回帰テストは WSL から次のように実行できる（Qt 付きは `mscz-host` に変更）:
+
+```bash
+cmake --build ~/build/mscz-noqt --target mscz_svg_symbols_test
+~/build/mscz-noqt/src/mscz_svg_symbols_test
+```
 
 Windows 側には何も入れない。C++ ツールチェーンと Qt6 は distro 内の apt から、それ以外は
 distro 内の **mise** から入る（`mise registry` に cmake / ninja / emsdk / python がある。

@@ -15,9 +15,13 @@ import createMscz from './mscz-engine.js'
 // for by name: alternative music fonts, tablature, figured bass.
 const DEFAULT_GROUPS = ['core']
 
-export async function load ({ base = '.', groups = DEFAULT_GROUPS } = {}) {
-  const mscz = await create()
-  await mscz.loadResources(base, groups)
+export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, resources } = {}) {
+  const mscz = await create({ wasmBinary })
+  if (resources) {
+    for (const { name, bytes } of resources) { mscz.addResource(name, bytes) }
+  } else {
+    await mscz.loadResources(base, groups)
+  }
   mscz.init()
   return mscz
 }
@@ -25,8 +29,11 @@ export async function load ({ base = '.', groups = DEFAULT_GROUPS } = {}) {
 // Starts the module without loading anything. For a caller that gets its
 // resources some other way than fetch -- the node-side check reads them off
 // disk -- since the engine does not care where the bytes came from.
-export async function create () {
-  return new Mscz(await createMscz())
+export async function create ({ wasmBinary } = {}) {
+  // Embedded modules have a data: URL, which cannot resolve a relative wasm
+  // URL. With bytes supplied, locateFile is only a name; no fetch occurs.
+  const options = wasmBinary ? { wasmBinary, locateFile: name => name } : {}
+  return new Mscz(await createMscz(options))
 }
 
 export class Mscz {
@@ -39,6 +46,10 @@ export class Mscz {
     this._open = c('mscz_open', 'number', ['number', 'number', 'string'])
     this._close = c('mscz_close', null, ['number'])
     this._pageCount = c('mscz_page_count', 'number', ['number'])
+    this._viewTranspose = c('mscz_view_transpose_semitones', 'number', ['number'])
+    this._setViewTranspose = c('mscz_set_view_transpose_semitones', 'number', ['number', 'number'])
+    this._viewSpelling = c('mscz_view_transpose_spelling', 'number', ['number'])
+    this._setTranspose = c('mscz_set_view_transpose', 'number', ['number', 'number', 'number'])
     this._renderSvg = c('mscz_render_page_svg', 'number', ['number', 'number', 'number', 'number', 'number'])
     this._fingerprint = c('mscz_layout_fingerprint', 'number', ['number'])
     this._resultPtr = c('mscz_result_ptr', 'number', [])
@@ -109,6 +120,36 @@ class Score {
 
   get pageCount () {
     return this.mscz._pageCount(this.id)
+  }
+
+  get viewTransposeSemitones () {
+    if (!this.id) { throw new Error('the score is closed') }
+    return this.mscz._viewTranspose(this.id)
+  }
+
+  // Absolute offset from the original score, not from the current view.
+  setViewTransposeSemitones (semitones, spelling = this.viewTransposeSpelling) {
+    if (!this.id) { throw new Error('the score is closed') }
+    if (!Number.isInteger(semitones) || semitones < -12 || semitones > 12) {
+      throw new RangeError('display transposition must be an integer from -12 to +12')
+    }
+    if (!['preserve', 'readable'].includes(spelling)) { throw new RangeError('unknown spelling mode') }
+    if (!this.mscz._setTranspose(this.id, semitones, spelling === 'readable' ? 1 : 0)) {
+      throw new Error(this.mscz._lastError() || 'could not transpose the score')
+    }
+  }
+
+  get viewTransposeSpelling () {
+    if (!this.id) { throw new Error('the score is closed') }
+    return this.mscz._viewSpelling(this.id) === 1 ? 'readable' : 'preserve'
+  }
+
+  setViewTransposeSpelling (spelling) {
+    this.setViewTransposeSemitones(this.viewTransposeSemitones, spelling)
+  }
+
+  clearViewTranspose () {
+    this.setViewTransposeSemitones(0)
   }
 
   pageSvg (pageIndex, {

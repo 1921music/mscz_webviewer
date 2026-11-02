@@ -202,6 +202,42 @@ int mscz_page_count(int id)
     return s ? s->pageCount() : 0;
 }
 
+EMSCRIPTEN_KEEPALIVE
+int mscz_view_transpose_semitones(int id)
+{
+    mscz::Session* s = session(id);
+    return s ? s->viewTransposeSemitones() : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mscz_set_view_transpose_semitones(int id, int semitones)
+{
+    g_error.clear();
+    mscz::Session* s = session(id);
+    if (!s) {
+        g_error = "no such session";
+        return 0;
+    }
+    return s->setViewTransposeSemitones(semitones, g_error) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mscz_view_transpose_spelling(int id)
+{
+    auto s = session(id);
+    return s ? int(s->viewTransposeSpelling()) : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mscz_set_view_transpose(int id, int semitones, int mode)
+{
+    g_error.clear();
+    auto s = session(id);
+    if (!s) { g_error = "no such session"; return 0; }
+    if (mode != 0 && mode != 1) { g_error = "unknown spelling mode"; return 0; }
+    return s->setViewTranspose(semitones, mscz::Session::TransposeSpelling(mode), g_error) ? 1 : 0;
+}
+
 //! Renders a page. `symbols` is 0 for <text> in the music font and 1 for
 //! outlines in <defs>; `fonts` is 0 to name fonts and 1 to embed subsets of
 //! them. 1/1 is the default the probe uses: self-contained, and a text

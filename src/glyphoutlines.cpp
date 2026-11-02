@@ -14,6 +14,9 @@
 #include FT_FREETYPE_H
 #include FT_OUTLINE_H
 
+#include <hb.h>
+#include <hb-ot.h>
+
 #include "global/io/file.h"
 #include "global/log.h"
 #include "global/modularity/ioc.h"
@@ -78,6 +81,7 @@ namespace mscz {
 
 struct GlyphOutlines::Face {
     FT_Face face = nullptr;
+    hb_font_t* shapingFont = nullptr;
     //! FT_New_Memory_Face does not copy, so the bytes have to outlive the face.
     ByteArray data;
     int unitsPerEm = 1000;
@@ -104,6 +108,9 @@ GlyphOutlines::GlyphOutlines()
 GlyphOutlines::~GlyphOutlines()
 {
     for (auto& [_, face] : m_impl->faces) {
+        if (face.shapingFont) {
+            hb_font_destroy(face.shapingFont);
+        }
         if (face.face) {
             FT_Done_Face(face.face);
         }
@@ -155,7 +162,37 @@ GlyphOutlines::Face* GlyphOutlines::faceFor(const Font& font)
     }
 
     face.unitsPerEm = face.face->units_per_EM > 0 ? face.face->units_per_EM : 1000;
+    hb_blob_t* blob = hb_blob_create(reinterpret_cast<const char*>(face.data.constData()),
+                                    static_cast<unsigned>(face.data.size()), HB_MEMORY_MODE_READONLY, nullptr, nullptr);
+    hb_face_t* hbFace = hb_face_create(blob, 0);
+    face.shapingFont = hb_font_create(hbFace);
+    hb_ot_font_set_funcs(face.shapingFont);
+    hb_font_set_scale(face.shapingFont, face.unitsPerEm, face.unitsPerEm);
+    hb_face_destroy(hbFace);
+    hb_blob_destroy(blob);
     return &face;
+}
+
+double GlyphOutlines::advanceEm(const Font& font, const String& text)
+{
+    Face* face = faceFor(font);
+    if (!face || text.empty()) {
+        return 0.0;
+    }
+    const std::u32string u32 = text.toStdU32String();
+    hb_buffer_t* buffer = hb_buffer_create();
+    hb_buffer_add_utf32(buffer, reinterpret_cast<const uint32_t*>(u32.data()),
+                        static_cast<int>(u32.size()), 0, static_cast<int>(u32.size()));
+    hb_buffer_guess_segment_properties(buffer);
+    hb_shape(face->shapingFont, buffer, nullptr, 0);
+    unsigned count = 0;
+    const hb_glyph_position_t* positions = hb_buffer_get_glyph_positions(buffer, &count);
+    double advance = 0;
+    for (unsigned i = 0; i < count; ++i) {
+        advance += positions[i].x_advance;
+    }
+    hb_buffer_destroy(buffer);
+    return advance / face->unitsPerEm;
 }
 
 const GlyphOutlines::Glyph& GlyphOutlines::glyph(const Font& font, char32_t ucs4)

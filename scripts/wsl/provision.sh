@@ -3,7 +3,7 @@
 # Provisions the mscz_dev WSL distribution for building the MuseScore-derived
 # render core (aria) natively with Qt6, and later for WebAssembly.
 #
-# Run as root inside a freshly registered Ubuntu 24.04 WSL distro:
+# Run as root inside a freshly registered Ubuntu 26.04 WSL distro:
 #   wsl -d mscz_dev -u root -- bash /tmp/provision.sh dev
 #
 # Everything that mise can provide comes from mise. Only the C++ toolchain and
@@ -68,6 +68,7 @@ fi
 
 apt_retry update -qq
 apt_retry install -y --no-install-recommends \
+    brotli \
     ccache \
     dpkg-dev \
     build-essential \

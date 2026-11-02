@@ -62,6 +62,21 @@ public:
 
     int pageCount() const;
 
+    //! Absolute display transposition relative to the opened score, in
+    //! semitones (-12..12). Keys and chord names follow pitched notes;
+    //! percussion stays unchanged. The read-only source is never modified.
+    //! Failure leaves the current view intact; zero restores the original.
+    int viewTransposeSemitones() const;
+    bool setViewTransposeSemitones(int semitones, std::string& error);
+    //! Both modes choose standard keys with at most six accidentals (Gb at
+    //! the tie). Preserve retains the engine's existing double-accidental
+    //! simplification; Readable additionally uses contextual spelling costs.
+    //! Mode switches also start from the original source. At zero, neither
+    //! policy changes the source notation.
+    enum class TransposeSpelling { Preserve = 0, Readable = 1 };
+    TransposeSpelling viewTransposeSpelling() const;
+    bool setViewTranspose(int semitones, TransposeSpelling spelling, std::string& error);
+
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
@@ -101,6 +116,9 @@ public:
 
 private:
     class Impl;
+
+    static std::unique_ptr<Session> openShared(std::shared_ptr<IReadStream> source,
+                                              const ScoreInfo& info, std::string& error);
 
     explicit Session(std::unique_ptr<Impl> impl);
 

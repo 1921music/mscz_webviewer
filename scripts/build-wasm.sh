@@ -68,6 +68,7 @@ if [ ! -f "${BUILD_DIR}/CMakeCache.txt" ]; then
 fi
 
 cmake --build "${BUILD_DIR}" -j "$(nproc)" -- -k 0 >"${LOG}" 2>&1
+build_status=$?
 
 failed=$(grep -acE '^FAILED:' "${LOG}")
 printf 'failing translation units: %s\n' "${failed}"
@@ -82,8 +83,9 @@ awk '
   }
 ' "${LOG}" | sort -u
 
-if [ "${failed}" != "0" ]; then
-    exit 1
+if [ "${build_status}" != "0" ]; then
+    tail -30 "${LOG}"
+    exit "${build_status}"
 fi
 
 echo

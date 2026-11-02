@@ -38,10 +38,8 @@ namespace mscz {
 //! of P covers P * 5 units before the transform, which the view transform then
 //! maps to P/72 inch on the device.
 //!
-//! Symbols are still emitted as <text>, so the SVG currently depends on the
-//! music font being available to the renderer. Turning them into <defs> paths
-//! referenced by <use>, which is what makes the output self-contained, comes
-//! next.
+//! Path mode also extracts SMuFL symbols from text runs (tempo marks, chord
+//! names, etc.), leaving ordinary words selectable.
 class SvgPaintProvider : public muse::draw::IPaintProvider
 {
 public:
@@ -203,7 +201,7 @@ private:
     std::map<FontSubset::FaceKey, std::set<char32_t> > m_usedGlyphs;
     //! Glyph id in <defs> by font family and code point, so each glyph is
     //! defined once per document.
-    std::map<std::pair<std::string, char32_t>, std::string> m_glyphIds;
+    std::map<std::pair<FontSubset::FaceKey, char32_t>, std::string> m_glyphIds;
     int m_openObjectGroups = 0;
     bool m_stateGroupOpen = false;
     std::string m_stateGroupAttrs;

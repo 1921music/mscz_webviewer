@@ -30,7 +30,17 @@
 <body>
 
 <header>
-  <input type="file" id="file" accept=".mscz">
+  <input type="file" id="file" accept=".mscz" disabled>
+  <div role="group" aria-label="表示の移調">
+    <button id="transposeDown" type="button" disabled>− 半音</button>
+    <output id="transposeValue" aria-live="polite">原調</output>
+    <button id="transposeUp" type="button" disabled>＋ 半音</button>
+    <button id="transposeReset" type="button" disabled>原調に戻す</button>
+    <select id="transposeSpelling" aria-label="移調の表記方針" disabled>
+      <option value="preserve">元譜維持</option>
+      <option value="readable">読みやすさ優先</option>
+    </select>
+  </div>
   <label>dpi <input type="number" id="dpi" value="300" min="72" max="1200" step="12" style="width: 5em"></label>
   <label><input type="checkbox" id="pathSymbols" checked> symbols as paths</label>
   <label><input type="checkbox" id="embedFonts" checked> embed font subsets</label>
@@ -49,10 +59,23 @@ const drop = document.getElementById('drop')
 
 let mscz = null
 let score = null
+let busy = false
+
+function updateTransposeControls () {
+  const offset = score ? score.viewTransposeSemitones : 0
+  document.getElementById('transposeValue').textContent = offset === 0 ? '原調' : `${offset > 0 ? '+' : ''}${offset} 半音`
+  document.getElementById('transposeDown').disabled = !score || busy || offset <= -12
+  document.getElementById('transposeUp').disabled = !score || busy || offset >= 12
+  document.getElementById('transposeReset').disabled = !score || busy || offset === 0
+  document.getElementById('transposeSpelling').disabled = !score || busy
+  if (score) { document.getElementById('transposeSpelling').value = score.viewTransposeSpelling }
+  document.getElementById('file').disabled = !mscz || busy
+}
 
 const t0 = performance.now()
 try {
   mscz = await load({ base: '.' })
+  updateTransposeControls()
   status.textContent = `engine ready in ${Math.round(performance.now() - t0)} ms`
             + ` (${(mscz.resourceBytes / 1024).toFixed(0)} KB of resources)`
 } catch (e) {
@@ -88,20 +111,51 @@ function render () {
 }
 
 async function openFile (file) {
+  if (!mscz || busy) { return }
+  busy = true
+  updateTransposeControls()
   status.textContent = `opening ${file.name}…`
-  drop.hidden = true
   try {
-    if (score) { score.close() }
-    score = mscz.open(new Uint8Array(await file.arrayBuffer()), file.name)
-    // So scripts/check-wasm-browser.js can ask the engine for its layout
-    // fingerprint and compare it with the native build's baseline.
-    window.__mscz = { mscz, score }
-    render()
+    adoptScore(mscz.open(new Uint8Array(await file.arrayBuffer()), file.name))
   } catch (e) {
     status.textContent = `${file.name}: ${e.message}`
-    throw e
+  } finally {
+    busy = false
+    updateTransposeControls()
   }
 }
+
+function adoptScore (next) {
+  if (score) { score.close() }
+  score = next
+  drop.hidden = true
+  window.__mscz = { mscz, score }
+  render()
+  updateTransposeControls()
+}
+
+async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) {
+  if (!score || busy) { return }
+  busy = true
+  updateTransposeControls()
+  status.textContent = '移調中…'
+  // Let the busy state appear before the synchronous engine/layout work.
+  await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
+  try {
+    score.setViewTransposeSemitones(semitones, spelling)
+    render()
+  } catch (e) {
+    status.textContent = `移調できません: ${e.message}`
+  } finally {
+    busy = false
+    updateTransposeControls()
+  }
+}
+
+document.getElementById('transposeDown').addEventListener('click', () => transposeTo(score.viewTransposeSemitones - 1))
+document.getElementById('transposeUp').addEventListener('click', () => transposeTo(score.viewTransposeSemitones + 1))
+document.getElementById('transposeReset').addEventListener('click', () => transposeTo(0))
+document.getElementById('transposeSpelling').addEventListener('change', e => transposeTo(score.viewTransposeSemitones, e.target.value))
 
 document.getElementById('file').addEventListener('change', e => {
   if (e.target.files[0]) { openFile(e.target.files[0]) }
@@ -119,10 +173,7 @@ if (wanted) {
     const res = await fetch(wanted)
     if (!res.ok) { throw new Error(`${res.status} ${res.statusText}`) }
     const bytes = new Uint8Array(await res.arrayBuffer())
-    drop.hidden = true
-    score = mscz.open(bytes, wanted.split('/').pop())
-    window.__mscz = { mscz, score }
-    render()
+    adoptScore(mscz.open(bytes, wanted.split('/').pop()))
   } catch (e) {
     status.textContent = `${wanted}: ${e.message}`
   }

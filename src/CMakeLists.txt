@@ -1,6 +1,8 @@
 add_library(mscz_core STATIC
     mscz_engine.cpp
     mscz_engine.h
+    displaytranspose.cpp
+    displaytranspose.h
     mscz_app_stub.h
     svgpaintprovider.cpp
     svgpaintprovider.h
@@ -120,7 +122,7 @@ if (EMSCRIPTEN)
         -sMALLOC=emmalloc
         -sALLOW_MEMORY_GROWTH=1
         -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8
-        -sINCOMING_MODULE_JS_API=
+        -sINCOMING_MODULE_JS_API=wasmBinary,locateFile
         # A separate file mapping function index to mangled name. Nothing is
         # added to the .wasm -- -Oz strips the name section -- but without it a
         # size attribution can only say "function 7231".
@@ -159,6 +161,27 @@ if (EMSCRIPTEN)
         VERBATIM
     )
     add_dependencies(mscz_wasm mscz_resource_manifest)
+
+    # Also deliver a self-contained file:// page. Separate output dependencies
+    # let page/wrapper edits repackage it even when the engine needn't relink.
+    add_custom_command(
+        OUTPUT "${MSCZ_WEB_DIR}/index-standalone.html"
+        COMMAND ${Python3_EXECUTABLE} -I
+                "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-web-resources.py"
+                --manifest "${MSCZ_RESOURCE_MANIFEST}"
+                --root "${MU_ROOT}" --out "${MSCZ_WEB_DIR}"
+        COMMAND ${Python3_EXECUTABLE} -I
+                "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
+                --web "${MSCZ_WEB_DIR}"
+        DEPENDS mscz_wasm mscz_resource_manifest
+                "${MSCZ_RESOURCE_MANIFEST}"
+                "${MSCZ_WEB_DIR}/index.html" "${MSCZ_WEB_DIR}/mscz.js"
+                "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-web-resources.py"
+                "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
+        COMMENT "Embedding JavaScript, wasm and all resources in index-standalone.html"
+        VERBATIM
+    )
+    add_custom_target(mscz_standalone ALL DEPENDS "${MSCZ_WEB_DIR}/index-standalone.html")
 endif()
 
 # The native probe opens files directly and takes a command line, neither of
@@ -178,6 +201,32 @@ target_compile_definitions(mscz_probe PRIVATE
 )
 
 target_link_libraries(mscz_probe PRIVATE mscz_core)
+
+# Explicit regression target: not part of the shipping binaries.
+add_executable(mscz_svg_symbols_test EXCLUDE_FROM_ALL ../test/svg_symbols.cpp)
+add_dependencies(mscz_svg_symbols_test mscz_resource_manifest)
+target_link_libraries(mscz_svg_symbols_test PRIVATE mscz_core)
+target_compile_definitions(mscz_svg_symbols_test PRIVATE
+    MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+    MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+)
+
+add_executable(mscz_transpose_test EXCLUDE_FROM_ALL ../test/transpose.cpp)
+add_dependencies(mscz_transpose_test mscz_resource_manifest)
+target_link_libraries(mscz_transpose_test PRIVATE mscz_core)
+target_compile_definitions(mscz_transpose_test PRIVATE
+    MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+    MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+)
+
+add_executable(mscz_spelling_test EXCLUDE_FROM_ALL ../test/spelling.cpp)
+add_dependencies(mscz_spelling_test mscz_resource_manifest)
+target_link_libraries(mscz_spelling_test PRIVATE mscz_core)
+target_compile_definitions(mscz_spelling_test PRIVATE
+    MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+    MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+    MSCZ_SPELLING_FIXTURE="${CMAKE_CURRENT_LIST_DIR}/../test/spelling.mscx"
+)
 
 if (MUSE_QT_SUPPORT)
     # Both providers exist only in the Qt build, which is the one place the

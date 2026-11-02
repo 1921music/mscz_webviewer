@@ -4,6 +4,7 @@
  * Part of mscz_test. Built on MuseScore-derived code; see vendor/aria/VENDOR.md.
  */
 #include "mscz_engine.h"
+#include "displaytranspose.h"
 
 #include <algorithm>
 #include <cmath>
@@ -32,6 +33,7 @@
 #include "engraving/dom/masterscore.h"
 #include "engraving/dom/mscore.h"
 #include "engraving/dom/page.h"
+#include "engraving/editing/transpose.h"
 #include "engraving/rendering/iscorerenderer.h"
 
 #include "mscz_app_stub.h"
@@ -47,6 +49,18 @@ namespace {
 constexpr muse::IApplication::RunMode kRunMode = muse::IApplication::RunMode::ConsoleApp;
 
 std::shared_ptr<mscz::IResourceProvider> g_resources;
+
+// Readers use absolute offsets, so independent devices can replay the same
+// read-only source without copying the container or sharing a seek cursor.
+class SharedReadStream : public mscz::IReadStream
+{
+public:
+    explicit SharedReadStream(std::shared_ptr<mscz::IReadStream> source) : m_source(std::move(source)) {}
+    uint64_t size() const override { return m_source->size(); }
+    size_t read(uint8_t* dest, uint64_t pos, size_t len) override { return m_source->read(dest, pos, len); }
+private:
+    std::shared_ptr<mscz::IReadStream> m_source;
+};
 
 //! Brings up the muse framework the way aria's RenderRuntime does: global,
 //! draw and engraving, in that order, through the full module lifecycle.
@@ -78,28 +92,17 @@ private:
         m_modules.emplace_back(std::make_unique<muse::draw::DrawModule>());
         m_modules.emplace_back(std::make_unique<mu::engraving::EngravingModule>());
 
-        muse::modularity::globalIoc()->registerExport<muse::IApplication>("mscz_test", new mscz::AppStub());
+        // Let GlobalModule register the actual application once, rather than
+        // pre-registering it and colliding with the module's own stub.
+        auto application = std::make_shared<mscz::AppStub>();
+        m_globalModule.setApplication(application);
+        for (const auto& module : m_modules) {
+            module->setApplication(application);
+        }
 
-        //! NOTE Registered before the modules, because the ioc keeps the first
-        //! registration. With Qt off the engine offers none at all; with Qt on
-        //! global would offer a QFile-backed one, and this takes precedence so
-        //! both builds read through the same host-side route.
         IF_ASSERT_FAILED(g_resources) {
             LOGE() << "no resource provider set; call Engine::setResourceProvider first";
         }
-        muse::modularity::globalIoc()->registerExport<muse::io::IFileSystem>(
-            "mscz_test", new mscz::HostFileSystem(g_resources));
-
-#ifdef NO_QT_SUPPORT
-        //! NOTE Registered before the draw module, so this wins over the
-        //! FreeType provider that module would otherwise install. That one
-        //! converts point size with muse::draw::DPI (360) and has none of
-        //! QFontProvider's conventions, which is what moved almost every
-        //! element on the page. CompatFontProvider answers as QFontProvider
-        //! did, so the layout the engine was written for is preserved.
-        muse::modularity::globalIoc()->registerExport<muse::draw::IFontProvider>(
-            "mscz_test", std::make_shared<mscz::CompatFontProvider>());
-#endif
 
         m_globalModule.registerResources();
         m_globalModule.registerExports();
@@ -107,6 +110,18 @@ private:
             module->registerResources();
             module->registerExports();
         }
+
+        // Replace module defaults before any imports are resolved or modules
+        // initialized. unregister is also valid when the Qt-free global
+        // module provides no filesystem. Do not rely on rejected duplicate
+        // registrations to choose our implementations.
+        auto ioc = muse::modularity::globalIoc();
+        ioc->unregister<muse::io::IFileSystem>("mscz_test");
+        ioc->registerExport<muse::io::IFileSystem>("mscz_test", new mscz::HostFileSystem(g_resources));
+#ifdef NO_QT_SUPPORT
+        ioc->unregister<muse::draw::IFontProvider>("mscz_test");
+        ioc->registerExport<muse::draw::IFontProvider>("mscz_test", std::make_shared<mscz::CompatFontProvider>());
+#endif
 
         m_globalModule.resolveImports();
         for (const auto& module : m_modules) {
@@ -180,10 +195,14 @@ void Engine::initializeIfNeeded()
 class Session::Impl
 {
 public:
-    std::unique_ptr<mu::engraving::MasterScore> masterScore;
+    std::shared_ptr<IReadStream> source;
+    ScoreInfo info;
     //! Outlives the score: the ZIP layer reads through it on demand.
     std::unique_ptr<StreamDevice> device;
+    std::unique_ptr<mu::engraving::MasterScore> masterScore;
     int pageCount = 0;
+    int transposeSemitones = 0;
+    TransposeSpelling transposeSpelling = TransposeSpelling::Preserve;
 
     mu::engraving::rendering::IScoreRenderer* renderer() const
     {
@@ -204,6 +223,12 @@ Session::~Session() = default;
 std::unique_ptr<Session> Session::open(std::unique_ptr<IReadStream> score, const ScoreInfo& info,
                                       std::string& error)
 {
+    return openShared(std::move(score), info, error);
+}
+
+std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score, const ScoreInfo& info,
+                                            std::string& error)
+{
     if (!score) {
         error = "No score to read.";
         return nullptr;
@@ -212,6 +237,8 @@ std::unique_ptr<Session> Session::open(std::unique_ptr<IReadStream> score, const
     Engine::initializeIfNeeded();
 
     auto impl = std::make_unique<Impl>();
+    impl->source = std::move(score);
+    impl->info = info;
     impl->masterScore = std::unique_ptr<mu::engraving::MasterScore>(
         mu::engraving::compat::ScoreAccess::createMasterScoreWithDefaultStyle(muse::modularity::globalCtx()));
     if (!impl->masterScore) {
@@ -222,7 +249,7 @@ std::unique_ptr<Session> Session::open(std::unique_ptr<IReadStream> score, const
     // Not compat::loadMsczOrMscx: that takes a path and opens an io::File,
     // which reads the whole thing. Going through MscReader with a device lets
     // the ZIP layer seek and inflate only the entries it reads.
-    impl->device = std::make_unique<StreamDevice>(std::move(score));
+    impl->device = std::make_unique<StreamDevice>(std::make_unique<SharedReadStream>(impl->source));
 
     mu::engraving::MscReader::Params params;
     params.device = impl->device.get();
@@ -281,6 +308,77 @@ std::unique_ptr<Session> Session::openPath(const std::string& scorePath, std::st
 int Session::pageCount() const
 {
     return m_impl->pageCount;
+}
+
+int Session::viewTransposeSemitones() const
+{
+    return m_impl->transposeSemitones;
+}
+
+bool Session::setViewTransposeSemitones(int semitones, std::string& error)
+{
+    return setViewTranspose(semitones, m_impl->transposeSpelling, error);
+}
+
+Session::TransposeSpelling Session::viewTransposeSpelling() const
+{
+    return m_impl->transposeSpelling;
+}
+
+bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::string& error)
+{
+    error.clear();
+    if (spelling != TransposeSpelling::Preserve && spelling != TransposeSpelling::Readable) {
+        error = "Unknown transposition spelling mode.";
+        return false;
+    }
+    if (semitones < -12 || semitones > 12) {
+        error = "Display transposition must be between -12 and +12 semitones.";
+        return false;
+    }
+    if (semitones == m_impl->transposeSemitones && spelling == m_impl->transposeSpelling) {
+        return true;
+    }
+
+    // Always start from the original source. Repeated half-step operations
+    // otherwise accumulate enharmonic spelling and layout changes. Build a
+    // candidate first so failed transpositions cannot damage the visible score.
+    auto candidate = openShared(m_impl->source, m_impl->info, error);
+    if (!candidate) {
+        return false;
+    }
+    if (semitones != 0) {
+        using namespace mu::engraving;
+        auto score = candidate->m_impl->masterScore.get();
+        if (score->nstaves() == 0) {
+            error = "The score has no staves to transpose.";
+            return false;
+        }
+        static constexpr int intervals[] = { 0, 3, 4, 7, 8, 11, 12, 14, 17, 18, 21, 22, 25 };
+        auto interval = Interval::allIntervals[intervals[std::abs(semitones)]];
+        if (semitones < 0) { interval.flip(); }
+        spelling::TranspositionSpelling policy(score, interval.chromatic * 7 - interval.diatonic * 12);
+        score->startCmd(muse::TranslatableString("mscz_test", "Transpose display"));
+        score->cmdSelectAll();
+        const bool ok = Transpose::transpose(score, TransposeMode::BY_INTERVAL,
+                                             semitones > 0 ? TransposeDirection::UP : TransposeDirection::DOWN,
+                                             Key::C, intervals[std::abs(semitones)], true, true, false);
+        if (ok) { policy.apply(spelling == TransposeSpelling::Readable); }
+        const bool engineError = MScore::_error != MsError::MS_NO_ERROR && !MScore::_errorIsWarning;
+        score->endCmd(!ok || engineError);
+        if (!ok || engineError) {
+            error = "The score cannot be transposed by that interval (a note may be out of range).";
+            return false;
+        }
+        score->deselectAll();
+        score->setLayoutAll();
+        score->doLayout();
+        candidate->m_impl->pageCount = static_cast<int>(score->pages().size());
+    }
+    candidate->m_impl->transposeSemitones = semitones;
+    candidate->m_impl->transposeSpelling = spelling;
+    m_impl.swap(candidate->m_impl);
+    return true;
 }
 
 bool Session::layoutFingerprint(std::vector<std::string>& out, std::string& error) const

@@ -36,6 +36,10 @@ public:
     //! per face, so repeated calls cost a map lookup.
     const Glyph& glyph(const muse::draw::Font& font, char32_t ucs4);
 
+    //! Shaped horizontal advance in em units, for positioning text after a
+    //! symbol removed from a mixed text run. Uses the same resolved face.
+    double advanceEm(const muse::draw::Font& font, const muse::String& text);
+
 private:
     struct Face;
 
