@@ -10,18 +10,20 @@
 // the first render. See src/mscz_wasm.cpp for the other side.
 
 import createMscz from './mscz-engine.js'
+import { textFontBackend } from './text-fonts.js'
 
 // Pushed before the first render. "optional" is everything a score has to ask
 // for by name: alternative music fonts, tablature, figured bass.
 const DEFAULT_GROUPS = ['core']
 
-export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, resources } = {}) {
-  const mscz = await create({ wasmBinary })
+export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, resources, textFonts = 'browser' } = {}) {
+  const mscz = await create({ wasmBinary, textFonts })
   if (resources) {
     for (const { name, bytes } of resources) { mscz.addResource(name, bytes) }
   } else {
     await mscz.loadResources(base, groups)
   }
+  await mscz.prepareTextFonts()
   mscz.init()
   return mscz
 }
@@ -29,16 +31,19 @@ export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, r
 // Starts the module without loading anything. For a caller that gets its
 // resources some other way than fetch -- the node-side check reads them off
 // disk -- since the engine does not care where the bytes came from.
-export async function create ({ wasmBinary } = {}) {
+export async function create ({ wasmBinary, textFonts = 'browser' } = {}) {
   // Embedded modules have a data: URL, which cannot resolve a relative wasm
   // URL. With bytes supplied, locateFile is only a name; no fetch occurs.
   const options = wasmBinary ? { wasmBinary, locateFile: name => name } : {}
-  return new Mscz(await createMscz(options))
+  const backend = textFontBackend(textFonts)
+  if (backend) options.textFontBackend = backend
+  return new Mscz(await createMscz(options), backend)
 }
 
 export class Mscz {
-  constructor (module) {
+  constructor (module, textFonts = null) {
     this.m = module
+    this.textFonts = textFonts
     const c = (name, ret, args) => module.cwrap(name, ret, args)
 
     this._resourceAdd = c('mscz_resource_add', null, ['string', 'number', 'number'])
@@ -75,6 +80,7 @@ export class Mscz {
   // Hands bytes over by the name the engine asks for them by. Usable after
   // init() too, which is how a font a score turns out to need can arrive late.
   addResource (name, bytes) {
+    this.textFonts?.addResource?.(name, bytes)
     const ptr = this._alloc(bytes.length)
     this.m.HEAPU8.set(bytes, ptr)
     this._resourceAdd(name, ptr, bytes.length)
@@ -83,7 +89,12 @@ export class Mscz {
   }
 
   init () {
+    if (this.textFonts?.isReady === false) throw new Error('Await prepareTextFonts() before init()')
     this._init()
+  }
+
+  async prepareTextFonts () {
+    await this.textFonts?.ready?.()
   }
 
   // Opens a .mscz. `name` is only the document's display name.

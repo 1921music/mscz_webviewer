@@ -103,7 +103,7 @@ done
 # Dropping them means editing the .qrc list and engravingmodule.cpp's font
 # registration to match, including the Bravura default and fallback. Those edits
 # are logged in VENDOR.md.
-FONT_DIRS=(leland edwin smufl campania)
+FONT_DIRS=(leland musejazz edwin smufl campania)
 FONT_FILES=(mscore-BC.ttf mscoreTab.ttf fonts_figuredbass.xml fonts_tablature.xml README.md)
 
 mkdir -p "${DEST}/fonts"
@@ -144,7 +144,7 @@ intact; do not relicense these files.
 | \`src/engraving/tests/\` | 33MB of test data |
 | \`src/framework/{global,draw}/tests/\` | not used here |
 | \`src/framework/draw/thirdparty/\` | bundled FreeType 2.14.1 (22MB); the host build uses the system FreeType and the wasm build will use an emscripten port |
-| \`fonts/\` except Leland, Edwin, SMuFL, Campania and the small special-purpose faces | ~14.5MB of optional music fonts and the FreeSans/FreeSerif text fallbacks. To be fetched over HTTP on demand |
+| \`fonts/\` except Leland, MuseJazz, Edwin, SMuFL, Campania and the small special-purpose faces | Other music fonts and FreeSans/FreeSerif are omitted; jazz aliases use MuseJazz |
 | \`buildscripts/{ci,packaging}/\` | not used here |
 | \`src/importexport/\` | MusicXML in/out is out of scope |
 | \`sandbox/engraving/\` | aria's render core is one big translation unit that also pulls in FluidSynth, MIDI export and MusicXML. We write our own slim facade instead and port the display logic from it |
@@ -153,7 +153,8 @@ intact; do not relicense these files.
 
 Record every deliberate change here as it is made, so the reason survives.
 
-- (nothing yet)
+- Embed MuseJazz and MuseJazz Text with their metadata and OFL license. Current downloaded provenance is in fonts/musejazz/SOURCE.txt.
+- Substitute Petaluma, Inkpen/Inkpen2, Reprise and Finale jazz families with MuseJazz; resolve text aliases in the Qt-free font database as well as Qt.
 EOF
 
 echo

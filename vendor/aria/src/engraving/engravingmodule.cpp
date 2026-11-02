@@ -178,12 +178,23 @@ void EngravingModule::onInit(const IApplication::RunMode&)
             m_engravingfonts->addInternalFont(name, fontDataKey.family().id().toStdString(), filePath);
         };
 
-        //! NOTE mscz_test: only Leland is embedded. Bravura, Emmentaler/MScore,
-        //! Gonville/Gootville, MuseJazz, Petaluma, Finale Maestro and Finale
+        //! NOTE mscz_test: Leland and MuseJazz are embedded. Bravura, Emmentaler/MScore,
+        //! Gonville/Gootville, Petaluma, Finale Maestro and Finale
         //! Broadway are left out to keep the wasm payload down, and are meant to
         //! be fetched on demand and registered then. See vendor/aria/VENDOR.md.
         addMusicFont("Leland", FontDataKey(u"Leland"), ":/fonts/leland/Leland.otf");
         fdb->addFont(FontDataKey(u"Leland Text"), ":/fonts/leland/LelandText.otf");
+        addMusicFont("MuseJazz", FontDataKey(u"MuseJazz"), ":/fonts/musejazz/MuseJazz.otf");
+        fdb->addFont(FontDataKey(u"MuseJazz Text"), ":/fonts/musejazz/MuseJazzText.otf");
+        // Named alternatives use the jazz family in both Qt and wasm. These
+        // are substitutions, not copies of proprietary Inkpen/Reprise fonts.
+        for (const auto* family : {u"Petaluma", u"Petaluma Text", u"Petaluma Script",
+                                   u"Inkpen", u"Inkpen Text", u"Inkpen2", u"Inkpen2 Text",
+                                   u"Inkpen2 Script", u"Inkpen2 Chords", u"Reprise", u"Reprise Text",
+                                   u"Reprise Script", u"Reprise Chords", u"Reprise Special", u"Reprise Std",
+                                   u"Finale Broadway", u"Finale Broadway Text", u"Finale Jazz", u"Finale Jazz Text"}) {
+            fdb->insertSubstitution(family, u"MuseJazz Text");
+        }
 
         // Tabulature
         //! NOTE mscz_test: upstream uses FreeSerif/FreeSans here, about 7.5MB of
@@ -212,13 +223,12 @@ void EngravingModule::onInit(const IApplication::RunMode&)
         //! mscz_test: the substitutions for fonts we no longer embed now all
         //! land on Leland Text, so a score asking for one of them degrades to
         //! Leland rather than to a face that is not there.
+        fdb->insertSubstitution(u"Leland Text",    u"Bravura Text");
         fdb->insertSubstitution(u"Bravura Text",   u"Leland Text");
         fdb->insertSubstitution(u"MScore Text",    u"Leland Text");
         fdb->insertSubstitution(u"Gootville Text", u"Leland Text");
         fdb->insertSubstitution(u"MuseJazz Text",  u"Leland Text");
-        fdb->insertSubstitution(u"Petaluma Text",  u"Leland Text");
         fdb->insertSubstitution(u"Finale Maestro Text", u"Leland Text");
-        fdb->insertSubstitution(u"Finale Broadway Text", u"Leland Text");
         fdb->insertSubstitution(u"ScoreFont",      u"Leland Text");// alias for current Musical Text Font
 
         // Symbols

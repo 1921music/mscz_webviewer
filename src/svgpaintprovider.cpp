@@ -4,6 +4,7 @@
  * Part of mscz_test. Built on MuseScore-derived code; see vendor/aria/VENDOR.md.
  */
 #include "svgpaintprovider.h"
+#include "textfontbackend.h"
 
 #include <cmath>
 #include <cstdio>
@@ -457,7 +458,8 @@ std::string SvgPaintProvider::paintAttributes(bool filled)
 std::string SvgPaintProvider::textAttributes()
 {
     std::ostringstream a;
-    a << " font-family=\"" << escapeText(m_state.font.family().id()) << "\""
+    const auto backend = textFontBackend(m_state.font);
+    a << " font-family=\"" << escapeText(backend ? backend->svgFamily(m_state.font) : m_state.font.family().id()) << "\""
       << " font-size=\"" << formatNumber(m_state.font.pointSizeF() * kFontSizeScale) << "\"";
     if (m_state.font.bold()) {
         a << " font-weight=\"bold\"";
@@ -465,6 +467,7 @@ std::string SvgPaintProvider::textAttributes()
     if (m_state.font.italic()) {
         a << " font-style=\"italic\"";
     }
+    if (backend) { a << " font-kerning=\"normal\""; }
 
     // Text takes the pen colour as its fill, the way QPainter draws it.
     const Pen& p = m_state.pen;
@@ -502,6 +505,7 @@ void SvgPaintProvider::noteUsedGlyphs(const String& text)
     if (m_fontMode != FontMode::EmbedSubset || text.empty()) {
         return;
     }
+    if (textFontBackend(m_state.font) && !containsMusicCharacters(text)) { return; }
     std::set<char32_t>& used = m_usedGlyphs[FontSubset::keyFor(m_state.font)];
     const std::u32string u32 = text.toStdU32String();
     used.insert(u32.begin(), u32.end());
@@ -629,6 +633,10 @@ void SvgPaintProvider::drawText(const PointF& point, const String& text)
             }
             const auto position = [&](size_t index) {
                 const String prefix = String::fromUcs4(chars.data(), index);
+                if (auto backend = textFontBackend(m_state.font); backend && !containsMusicCharacters(prefix)) {
+                    return PointF(point.x() + backend->measure(m_state.font, prefix).advance
+                                  * (72.0 / 1200.0) * kFontSizeScale, point.y());
+                }
                 return PointF(point.x() + m_glyphs.advanceEm(m_state.font, prefix)
                               * m_state.font.pointSizeF() * kFontSizeScale, point.y());
             };

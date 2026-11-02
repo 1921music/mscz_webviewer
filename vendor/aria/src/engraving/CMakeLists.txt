@@ -37,6 +37,7 @@ muse_module_add_qrc(engraving BIG_RESOURCES
     data/fonts/fonts_Campania.qrc
     data/fonts/fonts_Edwin.qrc
     data/fonts/fonts_Leland.qrc
+    data/fonts/fonts_MuseJazz.qrc
     data/fonts/fonts_MScoreSmall.qrc
     data/fonts/fonts_Tabulature.qrc
 )

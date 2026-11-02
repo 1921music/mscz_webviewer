@@ -40,8 +40,36 @@
 
 #include "hostio.h"
 #include "mscz_engine.h"
+#include "textfontbackend.h"
+
+EM_JS(int, has_text_backend, (), { return Module['textFontBackend'] ? 1 : 0; });
+EM_JS(void, measure_browser_text, (const char* family, double px, int bold, int italic, const char* text, double* out), {
+    const values = Module['textFontBackend'].measure(UTF8ToString(family), px, !!bold, !!italic, UTF8ToString(text));
+    if (!values || values.length !== 10 || !values.every(Number.isFinite)) throw new Error('Invalid text font metrics');
+    for (let i = 0; i < 10; ++i) HEAPF64[(out >> 3) + i] = values[i];
+});
+EM_JS(void, browser_text_family, (const char* family, char* out, int capacity), {
+    stringToUTF8(Module['textFontBackend'].family(UTF8ToString(family)), out, capacity);
+});
 
 namespace {
+class BrowserTextBackend final : public mscz::TextFontBackend {
+public:
+    bool handles(const muse::draw::Font&) const override { return true; }
+    mscz::TextMetrics measure(const muse::draw::Font& font, const muse::String& text) const override {
+        const double px = font.pointSizeF() > 0 ? font.pointSizeF() * 1200.0 / 72.0
+                        : font.pixelSize() > 0 ? font.pixelSize() : 200.0;
+        double m[10];
+        measure_browser_text(font.family().id().toStdString().c_str(), px, font.bold(), font.italic(),
+                             text.toStdString().c_str(), m);
+        return {m[0], m[1], m[2], m[3], m[4], m[5], muse::RectF(m[6], m[7], m[8], m[9])};
+    }
+    muse::String svgFamily(const muse::draw::Font& font) const override {
+        char family[2048];
+        browser_text_family(font.family().id().toStdString().c_str(), family, sizeof(family));
+        return muse::String::fromUtf8(family);
+    }
+};
 
 //! Bytes JS handed over, served without another copy.
 //!
@@ -159,6 +187,7 @@ EMSCRIPTEN_KEEPALIVE
 void mscz_init()
 {
     resources();
+    mscz::setTextFontBackend(has_text_backend() ? std::make_shared<BrowserTextBackend>() : nullptr);
     mscz::Engine::setResourceProvider(g_resources);
     mscz::Engine::initializeIfNeeded();
 }

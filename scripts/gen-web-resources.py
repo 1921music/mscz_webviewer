@@ -38,6 +38,7 @@ import sys
 CORE_PREFIXES = (
     "fonts/smufl/",
     "fonts/leland/",
+    "fonts/musejazz/",
     "fonts/edwin/",
     "engraving/instruments/",
     "engraving/styles/",

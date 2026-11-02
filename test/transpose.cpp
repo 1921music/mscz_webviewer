@@ -55,6 +55,15 @@ int main(int argc, char** argv)
         Event minorThird;
         minorThird.original = TPC_E_B; minorThird.pitch = 63; minorThird.harmonic = TPC_E_B;
         require(optimize({minorThird}).tpcs[0] == TPC_E_B, "original blue-note spelling lost");
+        for (auto pair : {std::pair{TPC_C_B, TPC_B}, std::pair{TPC_F_B, TPC_E},
+                          std::pair{TPC_E_S, TPC_F}, std::pair{TPC_B_S, TPC_C}}) {
+            Event rare;
+            rare.original = rare.harmonic = pair.first;
+            rare.pitch = (tpc2pitch(pair.first) + 12) % 12 + 60;
+            require(optimize({rare}).tpcs[0] == pair.second, "uncommon single accidental retained just for chord membership");
+            rare.essential = true;
+            require(optimize({rare}).tpcs[0] == pair.first, "essential single accidental spelling lost");
+        }
         require(argc > 1, "pass one or more .mscz sample paths");
         mscz::Engine::setResourceProvider(mscz::makeCachingProvider(
             mscz::makeDirectoryProvider(MSCZ_RESOURCE_ROOT, MSCZ_RESOURCE_MANIFEST)));
@@ -66,6 +75,8 @@ int main(int argc, char** argv)
             const auto originalSvg = svg(*score);
             const int originalPages = score->pageCount();
             require(score->viewTransposeSemitones() == 0, "new score is not at original pitch");
+            require(score->viewTransposeSpelling() == mscz::Session::TransposeSpelling::Readable,
+                    "new score must default to readable spelling");
             for (auto mode : { mscz::Session::TransposeSpelling::Preserve, mscz::Session::TransposeSpelling::Readable }) {
             require(score->setViewTranspose(0, mode, error), error);
             require(svg(*score) == originalSvg, "mode switch at zero changed source notation");

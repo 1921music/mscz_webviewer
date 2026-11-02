@@ -19,6 +19,7 @@ struct Event {
     int measure = 0;
     bool approach = false;
     bool locked = false;
+    bool essential = false; // explicit functional evidence beyond chord membership
 };
 struct Solution {
     int cost = 0;

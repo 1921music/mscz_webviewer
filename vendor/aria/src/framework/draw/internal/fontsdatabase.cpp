@@ -46,8 +46,7 @@ void FontsDatabase::setDefaultFont(Font::Type type, const FontDataKey& key)
 
 void FontsDatabase::insertSubstitution(const String& familyName, const String& substituteName)
 {
-    UNUSED(familyName);
-    UNUSED(substituteName);
+    m_familySubstitutions[familyName.toLower()] = substituteName;
 #ifdef MUSE_MODULE_DRAW_USE_QTFONTMETRICS
     QFont::insertSubstitution(familyName, substituteName);
 #endif
@@ -87,6 +86,16 @@ FontDataKey FontsDatabase::actualFont(const FontDataKey& requireKey, Font::Type 
         return requireKey;
     }
 
+    // QFont substitutions alone do not reach the FreeType/wasm provider.
+    auto alias = m_familySubstitutions.find(requireKey.family().id().toLower());
+    Font::FontFamily family(alias == m_familySubstitutions.end() ? requireKey.family().id() : alias->second);
+    if (type == Font::Type::MusicSymbol && family == Font::FontFamily(u"MuseJazz Text")) {
+        family = Font::FontFamily(u"MuseJazz");
+    }
+    for (const auto& candidate : {FontDataKey(family, requireKey.bold(), requireKey.italic()), FontDataKey(family)}) {
+        const auto replacement = fontInfo(candidate).path;
+        if (!replacement.empty() && io::File::exists(replacement)) { return candidate; }
+    }
     FontDataKey def = defaultFont(type);
     LOGW() << "not found required font: " << requireKey.family().id() << ", will be using default: " << def.family().id();
     return def;

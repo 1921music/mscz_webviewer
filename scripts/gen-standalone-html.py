@@ -36,11 +36,13 @@ def main():
     out = args.out or web / "index-standalone.html"
 
     engine = module_url((web / "mscz-engine.js").read_text(encoding="utf-8"))
+    text_fonts = module_url((web / "text-fonts.js").read_text(encoding="utf-8"))
     wrapper = replace_once((web / "mscz.js").read_text(encoding="utf-8"),
                            "from './mscz-engine.js'", f"from '{engine}'")
+    wrapper = replace_once(wrapper, "from './text-fonts.js'", f"from '{text_fonts}'")
     html = (web / "index.html").read_text(encoding="utf-8")
     html = replace_once(html, "from './mscz.js'", f"from '{module_url(wrapper)}'")
-    html = replace_once(html, "load({ base: '.' })", "load(embeddedOptions())")
+    html = replace_once(html, "load({ base: '.', textFonts })", "load({ ...embeddedOptions(), textFonts })")
 
     resources = []
     names = set()

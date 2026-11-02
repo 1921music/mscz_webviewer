@@ -58,6 +58,7 @@ private:
     const FontInfo& fontInfo(const FontDataKey& key) const;
 
     std::map<Font::Type, FontDataKey> m_defaults;
+    std::map<String, String> m_familySubstitutions;
     std::map<Font::Type, std::vector<FontDataKey> > m_substitutions;
     std::vector<FontInfo> m_fonts;
 };

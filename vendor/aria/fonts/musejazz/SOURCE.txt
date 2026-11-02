@@ -1,0 +1,3 @@
+MuseScore official fonts/musejazz, commit a9adc1bba915324050950ab023607e64589b053e
+https://github.com/musescore/MuseScore/tree/a9adc1bba915324050950ab023607e64589b053e/fonts/musejazz
+License: SIL Open Font License 1.1; see OFL.txt.

@@ -3,6 +3,8 @@ add_library(mscz_core STATIC
     mscz_engine.h
     displaytranspose.cpp
     displaytranspose.h
+    textfontbackend.cpp
+    textfontbackend.h
     mscz_app_stub.h
     svgpaintprovider.cpp
     svgpaintprovider.h
@@ -122,7 +124,7 @@ if (EMSCRIPTEN)
         -sMALLOC=emmalloc
         -sALLOW_MEMORY_GROWTH=1
         -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8
-        -sINCOMING_MODULE_JS_API=wasmBinary,locateFile
+        -sINCOMING_MODULE_JS_API=wasmBinary,locateFile,textFontBackend
         # A separate file mapping function index to mangled name. Nothing is
         # added to the .wasm -- -Oz strips the name section -- but without it a
         # size attribution can only say "function 7231".
@@ -146,7 +148,7 @@ if (EMSCRIPTEN)
     # the browser ignored a new URL parameter. configure_file instead makes
     # these configure-time dependencies, so touching one re-runs cmake and the
     # copy with it.
-    foreach(asset mscz.js index.html)
+    foreach(asset mscz.js text-fonts.js index.html)
         configure_file("${CMAKE_CURRENT_LIST_DIR}/../web/${asset}"
                        "${MSCZ_WEB_DIR}/${asset}" COPYONLY)
     endforeach()
@@ -176,6 +178,7 @@ if (EMSCRIPTEN)
         DEPENDS mscz_wasm mscz_resource_manifest
                 "${MSCZ_RESOURCE_MANIFEST}"
                 "${MSCZ_WEB_DIR}/index.html" "${MSCZ_WEB_DIR}/mscz.js"
+                "${MSCZ_WEB_DIR}/text-fonts.js"
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-web-resources.py"
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
         COMMENT "Embedding JavaScript, wasm and all resources in index-standalone.html"

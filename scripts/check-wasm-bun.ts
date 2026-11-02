@@ -14,8 +14,9 @@ function option(name: string, fallback: string) {
 }
 const web = path.resolve(option('web', path.join(repo, 'build/web')))
 const standalone = option('standalone', '')
+const textFonts = option('text-fonts', 'browser')
 const samples = path.resolve(option('samples', path.join(repo, '../sample')))
-const out = path.join(repo, 'build/out', standalone ? 'bun-standalone-e2e' : 'bun-e2e')
+const out = path.join(repo, 'build/out', (standalone ? 'bun-standalone-e2e' : 'bun-e2e') + (textFonts === 'embedded' ? '-embedded' : ''))
 const edge = option('browser', process.env.BUN_CHROME_PATH || [
   path.join(process.env['ProgramFiles(x86)'] || '', 'Microsoft/Edge/Application/msedge.exe'),
   path.join(process.env.ProgramFiles || '', 'Microsoft/Edge/Application/msedge.exe'),
@@ -33,7 +34,7 @@ if (standalone) {
   const isolated = await mkdtemp(path.join(out, 'isolated-'))
   const html = path.join(isolated, 'index.html')
   await copyFile(standalone, html)
-  standaloneUrl = pathToFileURL(html).href
+  standaloneUrl = pathToFileURL(html).href + `?textFonts=${encodeURIComponent(textFonts)}`
 }
 const server = standalone ? null : Bun.serve({
   hostname: '127.0.0.1',
@@ -99,6 +100,9 @@ async function waitFor(expression: string) {
 const inspect = `(() => {
   const svgs = [...document.querySelectorAll('#pages > svg')];
   const texts = [...document.querySelectorAll('#pages text')];
+  const ids = [...document.querySelectorAll('#pages [id]')].map(e => e.id);
+  const families = svgs.map(svg => [...svg.querySelectorAll('style')].flatMap(style =>
+    [...style.textContent.matchAll(/font-family:"([^"]+)"/g)].map(m => m[1])));
   return {
     status: document.querySelector('#status').textContent,
     pages: svgs.length,
@@ -109,12 +113,22 @@ const inspect = `(() => {
     fonts: [...document.querySelectorAll('#pages style')].filter(t => t.textContent.includes('@font-face')).length,
     viewBox: svgs[0]?.getAttribute('viewBox'),
     invalid: document.querySelectorAll('#pages parsererror').length,
+    uniqueIds: new Set(ids).size === ids.length,
+    localReferences: svgs.every(svg => [...svg.querySelectorAll('*')].every(e =>
+      [...e.attributes].every(a => {
+        const refs = a.localName === 'href' && a.value.startsWith('#') ? [a.value.slice(1)]
+          : [...a.value.matchAll(/url\\(#([^)]*)\\)/g)].map(m => m[1]);
+        return refs.every(id => document.getElementById(id)?.ownerSVGElement === svg);
+      }))),
+    separateFonts: families.every((names, i) => names.every(name =>
+      families.every((other, j) => i === j || !other.includes(name)))),
     visible: svgs[0]?.getBoundingClientRect().height > 0
   };
 })()`
 const results: unknown[] = []
 const unexpectedRequests: string[] = []
 async function chooseFile(name: string) {
+  await view.evaluate("document.querySelector('#file').value = ''")
   const { root } = await view.cdp('DOM.getDocument') as any
   const { nodeId } = await view.cdp('DOM.querySelector', { nodeId: root.nodeId, selector: '#file' }) as any
   await view.cdp('DOM.setFileInputFiles', { nodeId, files: [path.join(samples, name)] })
@@ -132,7 +146,7 @@ try {
       offline: true, latency: 0, downloadThroughput: 0, uploadThroughput: 0,
     })
   }
-  await view.navigate(standaloneUrl || `${server!.url}index.html`)
+  await view.navigate(standaloneUrl || `${server!.url}index.html?textFonts=${encodeURIComponent(textFonts)}`)
   await view.cdp('Runtime.enable')
   view.addEventListener('Runtime.exceptionThrown', (event: any) => {
     errors.push(JSON.stringify(event.data.exceptionDetails))
@@ -147,14 +161,40 @@ try {
       assert.equal(await view.evaluate('location.protocol'), 'file:', 'standalone did not use file://')
       await chooseFile(name)
     } else {
-      await view.navigate(`${server!.url}index.html?score=${encodeURIComponent('/samples/' + name)}`)
+      await view.navigate(`${server!.url}index.html?textFonts=${encodeURIComponent(textFonts)}&score=${encodeURIComponent('/samples/' + name)}`)
     }
     await waitFor("document.querySelector('#status').textContent.includes('page(s)')")
     const state: any = await view.evaluate(inspect)
+    assert(await view.evaluate("window.__mscz.score.viewTransposeSpelling === 'readable' && document.querySelector('#transposeSpelling').value === 'readable'"), `${name}: new score must default to readable mode`)
     assert(state.pages > 0 && state.pages === state.expected, `${name}: page count mismatch`)
     assert(state.paths > 0 && state.visible && state.invalid === 0, `${name}: invalid or empty rendering`)
+    assert(state.uniqueIds && state.localReferences && state.separateFonts, `${name}: SVG definitions leak across pages`)
     assert.equal(state.notationText, 0, `${name}: music symbols remain selectable`)
     assert(state.textRuns > 0, `${name}: ordinary words must remain selectable`)
+    if (textFonts === 'browser') {
+      assert(await view.evaluate('window.__mscz.mscz.textFonts.stats.calls > 0'), `${name}: browser metrics were not used`)
+      const checked: any = await view.evaluate(`(() => {
+        const backend = window.__mscz.mscz.textFonts;
+        const families = ['Times New Roman', 'Arial', 'Courier New'].map(n => backend.family(n));
+        const monoI = backend.measure('Courier New', 100, false, false, 'iiii')[0];
+        const monoW = backend.measure('Courier New', 100, false, false, 'WWWW')[0];
+        const nodes = [...document.querySelectorAll('#pages text')].filter(t => /[\\u3000-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]/u.test(t.textContent));
+        const ctx = document.createElement('canvas').getContext('2d'); ctx.fontKerning = 'normal';
+        const widths = nodes.map(t => {
+          const s = getComputedStyle(t);
+          ctx.font = s.fontStyle + ' ' + s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily;
+          return { svg: t.getComputedTextLength(), canvas: ctx.measureText(t.textContent).width, family: s.fontFamily };
+        });
+        return {families, monoI, monoW, widths, stats: backend.stats};
+      })()`)
+      assert(checked.families[0].endsWith('serif') && checked.families[1].endsWith('sans-serif') && checked.families[2].endsWith('monospace'))
+      assert(Math.abs(checked.monoI - checked.monoW) < 0.01, 'monospace fallback has unequal advances')
+      for (const width of checked.widths) {
+        assert(width.svg > 0 && Math.abs(width.svg - width.canvas) < Math.max(1, width.canvas * 0.02), `${name}: CJK SVG and browser metrics disagree`)
+        assert(width.family.includes('serif') || width.family.includes('monospace'), `${name}: CJK font stack lost`)
+      }
+      if (checked.widths.length) assert(checked.stats.cjk > 0, `${name}: CJK text bypassed browser metrics`)
+    }
     const baselines = option('baselines', '')
     if (baselines) {
       const expected = await Bun.file(path.join(baselines, path.basename(name, '.mscz') + '.wasm.fingerprint')).text()
@@ -169,6 +209,20 @@ try {
       };
       return true;
     })()`)
+    if (name === 'Those Days.mscz') {
+      await view.click('#transposeDown')
+      await waitFor("window.__mscz.score.viewTransposeSemitones === -1 && !document.querySelector('#transposeReset').disabled")
+      assert.equal(await view.evaluate('window.__mscz.score.viewTransposeSpelling'), 'readable')
+      await Bun.write(path.join(out, name + '.default-minus1.png'), await view.screenshot())
+      await view.click('#transposeReset')
+      await waitFor("window.__mscz.score.viewTransposeSemitones === 0 && document.querySelector('#transposeReset').disabled")
+    }
+    // The remaining roundtrip checks explicitly start in preserve mode.
+    await view.evaluate(`(() => {
+      const select = document.querySelector('#transposeSpelling');
+      select.value = 'preserve'; select.dispatchEvent(new Event('change', { bubbles: true }));
+    })()`)
+    await waitFor("window.__mscz.score.viewTransposeSpelling === 'preserve' && !document.querySelector('#transposeSpelling').disabled")
     await view.click('#transposeUp')
     await waitFor("window.__mscz.score.viewTransposeSemitones === 1 && document.querySelector('#transposeValue').textContent === '+1 半音' && !document.querySelector('#transposeReset').disabled")
     assert(await view.evaluate(`(() => {
@@ -205,6 +259,16 @@ try {
     assert(await view.evaluate(isOriginal), `${name}: up/down did not restore the original exactly`)
     await view.click('#transposeDown')
     await waitFor("window.__mscz.score.viewTransposeSemitones === -1 && document.querySelector('#transposeValue').textContent === '-1 半音'")
+    if (name === 'Those Days.mscz') {
+      await view.evaluate(`(() => {
+        const select = document.querySelector('#transposeSpelling');
+        select.value = 'readable'; select.dispatchEvent(new Event('change', { bubbles: true }));
+      })()`)
+      await waitFor("window.__mscz.score.viewTransposeSpelling === 'readable' && !document.querySelector('#transposeSpelling').disabled")
+      const readable: any = await view.evaluate(inspect)
+      assert(readable.uniqueIds && readable.localReferences && readable.separateFonts && readable.notationText === 0)
+      await Bun.write(path.join(out, name + '.readable-minus1.png'), await view.screenshot())
+    }
     await view.click('#transposeReset')
     await waitFor("window.__mscz.score.viewTransposeSemitones === 0 && document.querySelector('#transposeReset').disabled")
     assert(await view.evaluate(isOriginal), `${name}: original-pitch button did not restore the score exactly`)
@@ -220,6 +284,11 @@ try {
     })()`), `${name}: invalid transposition accepted`)
     assert(await view.evaluate(isOriginal), `${name}: invalid request changed the view`)
     await Bun.write(path.join(out, name + '.png'), await view.screenshot())
+    if (state.pages > 1) {
+      await view.evaluate("document.querySelectorAll('#pages > svg')[1].scrollIntoView()")
+      await Bun.write(path.join(out, name + '.page2.png'), await view.screenshot())
+      await view.evaluate('scrollTo(0, 0)')
+    }
     results.push({ name, ...state, transpose: 'both spelling modes, mode roundtrip, up/down, original pitch, exact layout and all-page SVG reset, invalid input' })
     console.log(`PASS ${name}: ${state.pages} pages, transpose and exact reset, screenshots saved`)
   }
@@ -229,13 +298,35 @@ try {
   await view.click('#transposeUp')
   await waitFor("window.__mscz.score.viewTransposeSemitones === 1 && !document.querySelector('#file').disabled")
   await chooseFile(file)
-  await waitFor("document.querySelector('#status').textContent.includes('page(s)')")
+  await waitFor("window.__mscz.score.viewTransposeSemitones === 0 && document.querySelector('#status').textContent.includes('page(s)')")
   const initial: any = await view.evaluate(inspect)
   assert.equal(await view.evaluate('window.__mscz.score.viewTransposeSemitones'), 0, 'opening another score did not reset transposition')
+  assert.equal(await view.evaluate('window.__mscz.score.viewTransposeSpelling'), 'readable', 'opening another score did not default to readable mode')
   assert.equal(await view.evaluate("document.querySelector('#transposeValue').textContent"), '原調')
-  assert(initial.pages > 0 && initial.fonts > 0)
+  assert(initial.pages > 0)
   assert.equal(initial.notationText, 0)
   const fileFingerprint = await view.evaluate('window.__mscz.score.layoutFingerprint()')
+  const pageWidth = await view.evaluate(`(() => {
+    window.__zoomPage = document.querySelector('#pages > svg');
+    return window.__zoomPage.getBoundingClientRect().width;
+  })()`)
+  await view.click('#zoomIn')
+  assert.equal(await view.evaluate("document.querySelector('#zoomValue').textContent"), '125%')
+  const zoomedWidth = await view.evaluate('window.__zoomPage.getBoundingClientRect().width')
+  assert(Math.abs(zoomedWidth - pageWidth * 1.25) < 1, `125% width: ${zoomedWidth}, initial: ${pageWidth}`)
+  assert(await view.evaluate("window.__zoomPage === document.querySelector('#pages > svg')"), 'zoom re-rendered the score')
+  await view.click('#zoomOut')
+  await view.click('#zoomOut')
+  assert.equal(await view.evaluate("document.querySelector('#zoomValue').textContent"), '75%')
+  assert(Math.abs(await view.evaluate('window.__zoomPage.getBoundingClientRect().width') - pageWidth * 0.75) < 1)
+  await view.evaluate("(() => { for (let i = 0; i < 20; i++) document.querySelector('#zoomIn').click(); return true })()")
+  assert(await view.evaluate("document.querySelector('#zoomValue').textContent === '400%' && document.querySelector('#zoomIn').disabled && document.documentElement.scrollWidth > document.documentElement.clientWidth"))
+  await view.evaluate("(() => { for (let i = 0; i < 20; i++) document.querySelector('#zoomOut').click(); return true })()")
+  assert(await view.evaluate("document.querySelector('#zoomValue').textContent === '25%' && document.querySelector('#zoomOut').disabled"))
+  await view.click('#zoomReset')
+  assert.equal(await view.evaluate("document.querySelector('#zoomValue').textContent"), '100%')
+  assert(Math.abs(await view.evaluate('window.__zoomPage.getBoundingClientRect().width') - pageWidth) < 1)
+  assert.equal(await view.evaluate('window.__mscz.score.layoutFingerprint()'), fileFingerprint, 'zoom changed score layout')
   for (const direction of [1, -1]) {
     for (let step = 1; step <= 12; ++step) {
       await view.click(direction > 0 ? '#transposeUp' : '#transposeDown')
@@ -248,12 +339,12 @@ try {
   }
   await view.click('#pathSymbols')
   assert((await view.evaluate(inspect) as any).notationText > initial.notationText, 'font symbol toggle had no effect')
-  await view.click('#pathSymbols')
-  assert.equal((await view.evaluate(inspect) as any).notationText, initial.notationText)
   await view.click('#embedFonts')
   assert.equal((await view.evaluate(inspect) as any).fonts, 0)
   await view.click('#embedFonts')
   assert((await view.evaluate(inspect) as any).fonts > 0)
+  await view.click('#pathSymbols')
+  assert.equal((await view.evaluate(inspect) as any).notationText, initial.notationText)
   await view.click('#dpi')
   await view.press('a', { modifiers: ['Control'] })
   await view.type('150')
@@ -263,10 +354,10 @@ try {
   assert.equal(resized.pages, initial.pages)
   assert.deepEqual(errors, [], 'browser errors')
   assert.deepEqual(unexpectedRequests, [], 'standalone tried to load an external dependency')
-  results.push({ interactions: 'file input resets transposition, octave bounds, symbols, embedded fonts, DPI', passed: true })
+  results.push({ interactions: 'file input resets transposition, zoom and fit width, zoom bounds, octave bounds, symbols, embedded fonts, DPI', passed: true })
   await Bun.write(path.join(out, 'results.json'), JSON.stringify({ bun: Bun.version, browser: edge,
     standalone: standaloneUrl || undefined, offline: !!standalone, unexpectedRequests, errors, results }, null, 2))
-  console.log(`PASS file input, symbol/font toggles, DPI; no browser errors\nResults: ${out}`)
+  console.log(`PASS file input, zoom, symbol/font toggles, DPI; no browser errors\nResults: ${out}`)
 } finally {
   clearTimeout(watchdog)
   try { await view.cdp('Browser.close') } catch {}

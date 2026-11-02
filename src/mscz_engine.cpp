@@ -5,6 +5,7 @@
  */
 #include "mscz_engine.h"
 #include "displaytranspose.h"
+#include "textfontbackend.h"
 
 #include <algorithm>
 #include <cmath>
@@ -38,6 +39,7 @@
 
 #include "mscz_app_stub.h"
 #include "svgpaintprovider.h"
+#include "draw/ifontprovider.h"
 
 #ifdef NO_QT_SUPPORT
 #include "compatfontprovider.h"
@@ -119,9 +121,12 @@ private:
         ioc->unregister<muse::io::IFileSystem>("mscz_test");
         ioc->registerExport<muse::io::IFileSystem>("mscz_test", new mscz::HostFileSystem(g_resources));
 #ifdef NO_QT_SUPPORT
-        ioc->unregister<muse::draw::IFontProvider>("mscz_test");
-        ioc->registerExport<muse::draw::IFontProvider>("mscz_test", std::make_shared<mscz::CompatFontProvider>());
+        std::shared_ptr<muse::draw::IFontProvider> fontProvider = std::make_shared<mscz::CompatFontProvider>();
+#else
+        auto fontProvider = ioc->resolve<muse::draw::IFontProvider>("mscz_test");
 #endif
+        ioc->unregister<muse::draw::IFontProvider>("mscz_test");
+        ioc->registerExport<muse::draw::IFontProvider>("mscz_test", mscz::routeTextFonts(std::move(fontProvider)));
 
         m_globalModule.resolveImports();
         for (const auto& module : m_modules) {
@@ -202,7 +207,7 @@ public:
     std::unique_ptr<mu::engraving::MasterScore> masterScore;
     int pageCount = 0;
     int transposeSemitones = 0;
-    TransposeSpelling transposeSpelling = TransposeSpelling::Preserve;
+    TransposeSpelling transposeSpelling = TransposeSpelling::Readable;
 
     mu::engraving::rendering::IScoreRenderer* renderer() const
     {

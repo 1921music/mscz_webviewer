@@ -28,6 +28,14 @@ int readableKey(int fifths)
 }
 namespace {
 int pc(int pitch) { return (pitch % 12 + 12) % 12; }
+bool uncommonSingle(int tpc)
+{
+    return tpc == TPC_C_B || tpc == TPC_F_B || tpc == TPC_E_S || tpc == TPC_B_S;
+}
+bool difficultSpelling(int tpc)
+{
+    return uncommonSingle(tpc) || std::abs(int(tpc2alter(tpc))) > 1;
+}
 // Walk the domain model rather than the visible layout: hidden staves,
 // grace notes and harmonies inside fret diagrams also need correct spelling.
 void forEachElement(Score* score, const std::function<void(EngravingItem*)>& visit)
@@ -62,10 +70,14 @@ int noteCost(const Event& e, int tpc)
 {
     int cost = tpc == e.original ? 0 : 4; // modest protection of the source
     if (e.harmonic != TPC_INVALID && tpc != e.harmonic) {
-        cost += e.approach ? 1 : 100;
+        // Chord membership alone does not require Cb/Fb/E#/B# in a jazz
+        // melody. Explicit functional evidence (e.g. a resolving leading
+        // tone) still protects the spelling, just as for double accidentals.
+        cost += e.essential ? 100 : e.approach ? 1 : uncommonSingle(e.harmonic) ? 0 : 100;
     }
     const int alter = std::abs(int(tpc2alter(tpc)));
     if (alter > 1) { cost += (e.approach ? 40 : 12) * (alter - 1); }
+    if (uncommonSingle(tpc)) { cost += e.approach ? 40 : 12; }
     // Chromatic notes are legitimate. Penalize a less suitable spelling,
     // rather than penalizing the fact that the source used a chromatic note.
     const Key key = Key(e.key);
@@ -315,9 +327,11 @@ void TranspositionSpelling::Impl::optimizeMusic()
                     e.tick = n.note->tick().ticks();
                     e.duration = n.note->chord()->actualTicks().ticks();
                     e.measure = n.note->chord()->measure()->tick().ticks();
-                    // Ties and polyphonic chords retain their mechanically
-                    // transposed structure. Avoid guessing at voice identity.
-                    e.locked = n.note->tieBack() || n.note->tieFor() || n.note->chord()->notes().size() > 1;
+                    // Keep ordinary chord/tie spellings conservative, but
+                    // allow difficult spellings to simplify. Tie continuations
+                    // are synchronized with their head after optimization.
+                    e.locked = !difficultSpelling(e.original)
+                               && (n.note->tieBack() || n.note->tieFor() || n.note->chord()->notes().size() > 1);
                     if (i + 1 < end && e.duration <= 240 && e.tick % 480 != 0) {
                         const auto next = block[i + 1]->note;
                         e.approach = !e.locked && std::abs(next->epitch() - e.pitch) == 1
@@ -328,11 +342,15 @@ void TranspositionSpelling::Impl::optimizeMusic()
                         && (h->mask & (1 << pc(tpc2pitch(n.sourceDisplayed) - tpc2pitch(h->sourceRoot))))) {
                         e.harmonic = shifted(e.original, root - h->root);
                     }
-                    if (n.leading && i + 1 < end && block[i + 1]->note->epitch() == e.pitch + 1) {
+                    size_t resolution = i + 1;
+                    while (resolution < end && block[resolution]->note->tieBack()
+                           && block[resolution]->note->epitch() == e.pitch) { ++resolution; }
+                    if (n.leading && resolution < end && block[resolution]->note->epitch() == e.pitch + 1) {
                         // An explicitly minor key plus the source's written
                         // leading tone resolving to its tonic is strong
                         // evidence even without a chord symbol.
                         e.harmonic = e.original;
+                        e.essential = true;
                         e.approach = false;
                     }
                     events.push_back(e);
@@ -349,7 +367,12 @@ void TranspositionSpelling::Impl::optimizeMusic()
             if (tpcIsValid(h->bass)) {
                 // Keep chord/bass interval spelling together; simplify an
                 // otherwise unreadable double accidental in the bass.
-                h->info->setBassTpc(clampEnharmonic(shifted(h->bass, bestRoot - h->root), false));
+                int bass = clampEnharmonic(shifted(h->bass, bestRoot - h->root), false);
+                if (uncommonSingle(bass)) {
+                    Event e; e.original = bass; e.key = h->key;
+                    bass = optimize({e}).tpcs.front();
+                }
+                h->info->setBassTpc(bass);
             }
         }
         for (size_t i = 0; i < block.size(); ++i) {

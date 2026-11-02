@@ -63,6 +63,11 @@ std::shared_ptr<EngravingFont> EngravingFontsProvider::doFontByName(const std::s
             return f;
         }
     }
+    if (name_lo.rfind("petaluma", 0) == 0 || name_lo.rfind("inkpen", 0) == 0
+        || name_lo.rfind("reprise", 0) == 0 || name_lo.rfind("finale broadway", 0) == 0
+        || name_lo.rfind("finale jazz", 0) == 0) {
+        return doFontByName("MuseJazz");
+    }
     return nullptr;
 }
 

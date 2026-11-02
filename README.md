@@ -111,8 +111,51 @@ cp -r ~/build/mscz-wasm/web/. /mnt/g/work/20261029/podium/podium/build/web/
 ```
 
 HTMLを空の検証フォルダーにコピーし、HTTPサーバーを起動せず、Edgeのネットワークを
-オフラインにしてサンプル5件の表示・移調・モード切替・原調復帰を確認する。
+オフラインにしてサンプルの表示・移調・モード切替・原調復帰を確認する。
 追加の依存ファイルへのリクエストがないことも検証する。
+
+## 一般文字とCJKのフォント計測
+
+ブラウザー版の既定は、一般文字をCanvasで計測し、同じCSSフォント指定でSVGの
+`<text>`を描画する方式。端末の欧文・日本語・中国語・韓国語フォントを利用し、
+NotoやLiberationの追加同梱、端末のフォントファイルへのアクセス許可を必要としない。
+Times New Romanなどのセリフ体、Arialなどのサンセリフ体、Courierなどの等幅を区別する。
+同梱済みのEdwin/MuseJazz Text等を一般文字に使う場合は、同じファイルをFontFace APIで
+事前ロードする。音楽記号の計測と輪郭描画は従来の内蔵フォント経路を使用する。
+
+```js
+const scoreEngine = await load({ base: '.', textFonts: 'browser' }) // 既定
+const embeddedEngine = await load({ base: '.', textFonts: 'embedded' }) // 従来の内蔵方式
+// 独自バックエンド: { measure(family, px, bold, italic, text), family(name) }
+// 返す計測値の順序・単位は web/text-fonts.js の先頭コメントを参照。
+```
+
+`create()`から手動でリソースを追加するホストは、`init()`の前に
+`await engine.prepareTextFonts()`を呼ぶ。起動時の選択であり、開いている譜面の途中で
+方式を変える場合は新しいエンジンを作って元譜を開き直す。
+確認用にHTMLのURLへ`?textFonts=embedded`を付けても切り替えられる。
+
+MuseScore側には常に同じ`IFontProvider`を公開し、`src/textfontbackend.h`の
+`TextFontBackend`とルーターがホストの計測へ委譲する。ネイティブの既定や
+ブラウザーの`embedded`では内蔵プロバイダーへ戻る。後からCJK内蔵バックエンドを
+追加しても、MuseScoreの組版コードを変更する必要はない。
+
+ブラウザー方式は端末のフォントに応じて字体・改行・ページ割りが変わる。
+対応するCJKフォントが端末に必要で、一般文字を含むSVG単体の別環境への持ち出しも
+フォント環境に依存する。通常文字を誤った内蔵フォントでサブセット化して上書きしない。
+
+CJKと3書体系統の回帰検証（WSLでfixtureを生成した後、Windowsで実行）:
+
+```bash
+python3 scripts/make-browser-text-fixture.py
+```
+
+```powershell
+& C:\Tools\bun.exe test/text_fonts.mjs
+& C:\Tools\bun.exe scripts/check-wasm-bun.ts --samples build/browser-text-fixture
+& C:\Tools\bun.exe scripts/check-wasm-bun.ts --samples build/browser-text-fixture --standalone build/web/index-standalone.html
+& C:\Tools\bun.exe scripts/check-wasm-bun.ts --text-fonts embedded
+```
 
 ## 表示用の移調（2026-11-02）
 
@@ -123,7 +166,7 @@ HTMLを空の検証フォルダーにコピーし、HTTPサーバーを起動せ
 
 - C++: `Session::setViewTransposeSemitones(int, error)` と `viewTransposeSemitones()`。
 - 表記方針も変更する場合は `Session::setViewTranspose(int, TransposeSpelling, error)`。
-  `TransposeSpelling::Preserve`（既定）と `Readable` を選べる。
+  `TransposeSpelling::Readable`（既定）と `Preserve` を選べる。
 - wasm: `mscz_set_view_transpose_semitones` と `mscz_view_transpose_semitones`。
 - JavaScript:
 
@@ -154,9 +197,13 @@ console.log(score.viewTransposeSemitones) // 0
   元の綴りの変更は4。短く弱拍にある半音アプローチではダブル記号を40、
   和声の不一致を1とする。コード候補ごとに声部の綴りを動的計画法で評価する。
   元のコードとの関係が明確な和声音は保護し、B調のD♯7をE♭7に直すことはしない。
+  C♭・F♭・E♯・B♯にもダブル記号と同じ読みづらさのコストを与える。
+  この4種はコード構成音であることだけでは保護せず、例えばD♭m7上のC♭・F♭は
+  B♮・E♮を選べる。短調の導音が主音へ解決するなど、明確な機能がある場合は綴りを保護する。
 
 これは元譜を根拠にした保守的な初版で、一般的な和声解析・フレーズ認識を行うものではない。
-タイと多声音の音程構造は保持する。コード品質、テンション指定、実音は変更しない。
+タイと多声音は通常の綴りを保持し、読みづらい綴りは簡略化できる。タイの前後は同じ綴りに揃える。
+コード品質、テンション指定、実音は変更しない。
 F♯/B♭の単音としての弱い優遇より、調号と和声の整合性を優先する。
 モードを切り替える場合も常に元譜から再計算し、前の表示から補正を累積しない。
 
@@ -455,7 +502,8 @@ webkit バックエンドは macOS 専用。操作を伴う E2E（ドラッグ�
 
 ユーザ提供のサンプル 3 つ（`OverJoyed` 15ページ / `サウダージ` 2ページ / `サウダージ_demo` 23ページ）も
 wasm で開いて描画できることを確認した。UTF-8 のファイル名も問題ない。
-ただし MuseJazz と CJK フォントは同梱していないので、**字体は正しくない**（フォント供給の課題のまま）。
+MuseJazz / MuseJazz Text は同梱し、Petaluma・Inkpen/Inkpen2・Reprise系もMuseJazz系で代替する。
+CJKフォントはまだ同梱していないため、日本語等の字体・表示は別途対応が必要。
 
 ### 見つけた問題: 描画順が標準ライブラリで変わる
 
