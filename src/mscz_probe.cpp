@@ -22,8 +22,8 @@ namespace {
 int usage()
 {
     std::fprintf(stderr,
-                 "usage: mscz_probe [--dpi N] [--out DIR] [--page N] <score.mscz|.mscx>\n"
-                 "       mscz_probe --fingerprint <score.mscz|.mscx>\n");
+                 "usage: mscz_probe [--svg] [--dpi N] [--out DIR] [--page N] <score.mscz|.musicxml|.xml|.mxl>\n"
+                 "       mscz_probe --fingerprint <score.mscz|.musicxml|.xml|.mxl>\n");
     return 2;
 }
 

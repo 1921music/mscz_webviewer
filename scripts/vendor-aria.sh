@@ -146,7 +146,7 @@ intact; do not relicense these files.
 | \`src/framework/draw/thirdparty/\` | bundled FreeType 2.14.1 (22MB); the host build uses the system FreeType and the wasm build will use an emscripten port |
 | \`fonts/\` except Leland, MuseJazz, Edwin, SMuFL, Campania and the small special-purpose faces | Other music fonts and FreeSans/FreeSerif are omitted; jazz aliases use MuseJazz |
 | \`buildscripts/{ci,packaging}/\` | not used here |
-| \`src/importexport/\` | MusicXML in/out is out of scope |
+| \`src/importexport/\` except MusicXML import | Other importers and MusicXML export are omitted; the importer is copied directly from MuseScore v4.7.5 by \`scripts/vendor-musicxml.py\` (see its \`SOURCE.json\`) |
 | \`sandbox/engraving/\` | aria's render core is one big translation unit that also pulls in FluidSynth, MIDI export and MusicXML. We write our own slim facade instead and port the display logic from it |
 
 ## Divergence from upstream

@@ -6,6 +6,8 @@
 #include "mscz_engine.h"
 #include "displaytranspose.h"
 #include "textfontbackend.h"
+#include "musicxmlimport.h"
+#include "importexport/musicxml/internal/musicxmlconfiguration.h"
 
 #include <algorithm>
 #include <cmath>
@@ -117,6 +119,8 @@ private:
         // module provides no filesystem. Do not rely on rejected duplicate
         // registrations to choose our implementations.
         auto ioc = muse::modularity::globalIoc();
+        auto musicXmlConfig = std::make_shared<mu::iex::musicxml::MusicXmlConfiguration>();
+        ioc->registerExport<mu::iex::musicxml::IMusicXmlConfiguration>("mscz_test", musicXmlConfig);
         ioc->unregister<muse::io::IFileSystem>("mscz_test");
         ioc->registerExport<muse::io::IFileSystem>("mscz_test", new mscz::HostFileSystem(g_resources));
 #ifdef NO_QT_SUPPORT
@@ -138,6 +142,7 @@ private:
         }
 
         m_globalModule.onInit(kRunMode);
+        musicXmlConfig->init();
         for (const auto& module : m_modules) {
             module->onInit(kRunMode);
         }
@@ -255,26 +260,32 @@ std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score,
     // the ZIP layer seek and inflate only the entries it reads.
     impl->device = std::make_unique<StreamDevice>(std::make_unique<SharedReadStream>(impl->source));
 
-    mu::engraving::MscReader::Params params;
-    params.device = impl->device.get();
-    params.mode = mu::engraving::MscIoMode::Zip;
-
-    mu::engraving::MscReader reader(params);
-    muse::Ret ret = reader.open();
-    if (!ret) {
-        error = "Could not read the score container: " + ret.text();
-        return nullptr;
-    }
-
-    // Not optional: MscLoader reads fileInfo()->fileName() while loading, and
-    // a score opened from a stream has no file to take it from.
+    // Imported scores share the desktop's final setup/layout below, but do
+    // not go through the native MSC container reader or its legacy rewrites.
     impl->project->setFileInfoProvider(makeStreamFileInfoProvider(info));
+    muse::Ret ret;
+    const bool musicXml = isMusicXml(info);
+    if (musicXml) {
+        impl->masterScore()->checkChordList();
+        ret = importMusicXml(impl->masterScore(), *impl->device, info);
+    } else {
+        mu::engraving::MscReader::Params params;
+        params.device = impl->device.get();
+        params.mode = mu::engraving::MscIoMode::Zip;
 
-    ret = impl->project->loadMscz(reader, nullptr, false);
-    if (!ret) {
-        // The second chance desktop MuseScore's "open anyway" gives a file
-        // written by a newer version.
-        ret = impl->project->loadMscz(reader, nullptr, true);
+        mu::engraving::MscReader reader(params);
+        ret = reader.open();
+        if (!ret) {
+            error = "Could not read the score container: " + ret.text();
+            return nullptr;
+        }
+
+        ret = impl->project->loadMscz(reader, nullptr, false);
+        if (!ret) {
+            // The second chance desktop MuseScore's "open anyway" gives a
+            // file written by a newer version.
+            ret = impl->project->loadMscz(reader, nullptr, true);
+        }
     }
     if (!ret) {
         error = "Could not read the score: " + ret.text();
@@ -292,12 +303,12 @@ std::unique_ptr<Session> Session::openShared(std::shared_ptr<IReadStream> score,
         error = "Could not prepare the score: " + ret.text();
         return nullptr;
     }
-    mu::engraving::compat::EngravingCompat::doPreLayoutCompatIfNeeded(masterScore);
+    if (!musicXml) { mu::engraving::compat::EngravingCompat::doPreLayoutCompatIfNeeded(masterScore); }
     masterScore->updateCapo(/*ignoreNotationUpdate=*/true);
     masterScore->lockUpdates(false);
     masterScore->setLayoutAll();
     masterScore->update();
-    mu::engraving::compat::EngravingCompat::doPostLayoutCompatIfNeeded(masterScore);
+    if (!musicXml) { mu::engraving::compat::EngravingCompat::doPostLayoutCompatIfNeeded(masterScore); }
     impl->pageCount = static_cast<int>(masterScore->pages().size());
 
     return std::unique_ptr<Session>(new Session(std::move(impl)));

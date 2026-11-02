@@ -48,7 +48,8 @@ public:
 class Session
 {
 public:
-    //! Opens a score from a seekable reader. The reader is handed to the ZIP
+    //! Opens MSCZ or MusicXML (.musicxml/.xml/.mxl, selected by info.name)
+    //! from a seekable reader. The reader is handed to the ZIP
     //! layer as a device, so a .mscz is not pulled in whole: it seeks to the
     //! central directory and inflates only the entries that get read.
     static std::unique_ptr<Session> open(std::unique_ptr<IReadStream> score, const ScoreInfo& info,

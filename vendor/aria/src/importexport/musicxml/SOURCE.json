@@ -1,0 +1,40 @@
+{
+  "upstream": "https://github.com/musescore/MuseScore.git",
+  "ref": "v4.7.5",
+  "commit": "3654226c2e99289916916953a98e585a3d3b315a",
+  "line_endings": "Files use CRLF to match vendor/aria; upstream hashes use LF.",
+  "upstream_sha256": {
+    "imusicxmlconfiguration.h": "e4d00e89387af76a8bca981e94892cb4b6cf0a647591ec74f82d5a2e87c8c109",
+    "internal/import/importmusicxml.cpp": "56eadf5ef3815d451d459fb557dc29e592fa13bd9823c48147da5ecc904d9ae3",
+    "internal/import/importmusicxml.h": "97b38600546a38e0927d056817911e27b904f7bbf07e27bb28633224dd05eb95",
+    "internal/import/importmusicxmllogger.cpp": "1559e12216dd4cb3ef9884def0133353967367526c4530677496b1759596d741",
+    "internal/import/importmusicxmllogger.h": "6848f3a93368171cc841d20d0a04aeca42dab6f7398a6ac8c758337b7a57eee1",
+    "internal/import/importmusicxmlnoteduration.cpp": "1154db14330b368a74e24e8b4d8def5cc024ad5798c32ebc5a75ce6a6aa42d41",
+    "internal/import/importmusicxmlnoteduration.h": "2bab9fd64ac3ae0255875fd6867d298533d4a7ac95f76e942e4d8b466eac4e53",
+    "internal/import/importmusicxmlnotepitch.cpp": "cbfda598428d2c83c89b76713a8296d9400ee45a075f6a2bfdacb60725a91adb",
+    "internal/import/importmusicxmlnotepitch.h": "611e6ecbd5217f2daf0a53c0ff80ba5adafd40a71e1c18a4a072ba025b5fa253",
+    "internal/import/importmusicxmlpass1.cpp": "5046b50fba47d75f1f9cb2f4fcc60dd15ffe1d31336e0ba51375b484bacca784",
+    "internal/import/importmusicxmlpass1.h": "4e9843ba9d5d8fb0b01fe446d4512dda24366ffd099b2a29c54fe5d3992e9c4c",
+    "internal/import/importmusicxmlpass2.cpp": "fa8e02b6cc04b41e47ec6081f72ed71a89961cbbbbb0c82114ccbcb3ffd32f01",
+    "internal/import/importmusicxmlpass2.h": "96baa9e0bb6075c493928023e1d1a737c5584994793e13b4d6b048be75d57920",
+    "internal/import/musicxmlpart.cpp": "577c31bfbf7ff18e62fcc5e4d7456489bbcc6f2814ca97ac0c8b63896e156287",
+    "internal/import/musicxmlpart.h": "fe604ba0e94319a81895d39b00b10649c25f7be7c4a3c653cf40a912fb6088cf",
+    "internal/import/musicxmltupletstate.cpp": "3e5da3ac70b0e29744fe5e46a3d6c8b63febea9bbcaed7240007b0f7756cd759",
+    "internal/import/musicxmltupletstate.h": "e83d41d6583345c2aaa2b5106b4f5cb82a8223b704752288c0367c0d140bf2de",
+    "internal/import/musicxmlvalidation.cpp": "1ca7ed1637bfb4357cae0453198f88b0f7ad8d0dac7a8bbc61b81e859717a6d0",
+    "internal/import/musicxmlvalidation.h": "712bb053e374a0d9f242a8d154761dd6b1ad1ae77a6a369df7f6ce434e53cfe4",
+    "internal/import/musicxmlvoicedesc.cpp": "70d5c5189762669658a5324080fa2ed3741ae9fc9455ea0e2d92cee1925ab3b0",
+    "internal/import/musicxmlvoicedesc.h": "6d54be4b11b9639f23569ef95a9ad82756c27279306bac0bb2c91114a6797cc0",
+    "internal/musicxmlconfiguration.cpp": "8032e3959b08fd2ea973a4daf0a4feb01f3bb3bc973525a762f13edadd57adc5",
+    "internal/musicxmlconfiguration.h": "12f34d4d67e19deeed5136b75130ebd2a19a32e13621247a6df7b639424fa11f",
+    "internal/shared/musicxmlfonthandler.cpp": "3d466443b001df135de3a55e34f0514f638bb55464a4d5f36dea7d95ed472ee0",
+    "internal/shared/musicxmlfonthandler.h": "71e6baeea53e18742575a5ad6fdf2f34b202f8bd1f6546a9f517562f6befd645",
+    "internal/shared/musicxmlsupport.cpp": "9e77967b980ce5221f553ef6f51c2a9f349fb6b271256b1933f2e1047868b02b",
+    "internal/shared/musicxmlsupport.h": "42d94722bfe39bb979288f8a237b96189c25c0ca3af8ecadaec423724ba1878c",
+    "internal/shared/musicxmltypes.cpp": "8e034389df7a7e12b972b05d97e93399128665a2d0924f3d077d75d7b689fda0",
+    "internal/shared/musicxmltypes.h": "100854f2a3a7210433b9d71fb9c07123301abb5e77788d4932a2f8e95299cf74"
+  },
+  "local_changes": {
+    "imusicxmlconfiguration.h": "Include <optional> explicitly; no PCH."
+  }
+}

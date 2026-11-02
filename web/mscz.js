@@ -97,7 +97,8 @@ export class Mscz {
     await this.textFonts?.ready?.()
   }
 
-  // Opens a .mscz. `name` is only the document's display name.
+  // Opens .mscz, .musicxml/.xml or .mxl. The extension of `name` selects
+  // native MuseScore or MusicXML loading; bytes never go through a filesystem.
   open (bytes, name = 'score.mscz') {
     const ptr = this._alloc(bytes.length)
     this.m.HEAPU8.set(bytes, ptr)

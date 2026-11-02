@@ -695,7 +695,10 @@ void SvgPaintProvider::drawText(const PointF& point, const String& text)
     // Qt places the baseline at the given point, and so does SVG <text> by
     // default, so the position carries over unchanged.
     openStateGroup(textAttributes());
-    m_body << "<text";
+    // Set this on text itself: SVG's text whitespace rules do not inherit a
+    // group's preserve setting consistently when imported into an HTML page.
+    // Canvas/MuseScore measure repeated and trailing spaces literally.
+    m_body << "<text style=\"white-space:pre\"";
     if (point.x() != 0.0) {
         m_body << " x=\"" << formatNumber(point.x()) << "\"";
     }

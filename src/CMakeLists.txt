@@ -5,6 +5,8 @@ add_library(mscz_core STATIC
     displaytranspose.h
     textfontbackend.cpp
     textfontbackend.h
+    musicxmlimport.cpp
+    musicxmlimport.h
     mscz_app_stub.h
     svgpaintprovider.cpp
     svgpaintprovider.h
@@ -17,6 +19,22 @@ add_library(mscz_core STATIC
     compatfontprovider.cpp
     compatfontprovider.h
 )
+
+# MuseScore's two-pass MusicXML importer, without the writer, GUI or XSD
+# validator (the desktop module also disables XSD validation).
+set(MSCZ_MUSICXML_DIR "${MU_ROOT}/src/importexport/musicxml/internal")
+add_library(mscz_musicxml STATIC)
+file(GLOB MSCZ_MUSICXML_SOURCES CONFIGURE_DEPENDS
+    "${MSCZ_MUSICXML_DIR}/import/*.cpp"
+    "${MSCZ_MUSICXML_DIR}/shared/*.cpp")
+target_sources(mscz_musicxml PRIVATE ${MSCZ_MUSICXML_SOURCES}
+    "${MSCZ_MUSICXML_DIR}/musicxmlconfiguration.cpp")
+target_compile_definitions(mscz_musicxml PRIVATE MUSICXML_NO_INTERACTIVE MUSICXML_NO_VALIDATION)
+target_include_directories(mscz_musicxml PRIVATE
+    ${CMAKE_BINARY_DIR} ${MU_ROOT} ${MU_ROOT}/src ${MU_ROOT}/src/framework
+    ${MU_ROOT}/src/framework/global ${MU_ROOT}/src/engraving
+    ${MU_ROOT}/src/importexport/musicxml)
+target_link_libraries(mscz_musicxml PUBLIC engraving muse::global muse::draw)
 
 target_include_directories(mscz_core PUBLIC
     ${CMAKE_CURRENT_LIST_DIR}
@@ -52,6 +70,7 @@ target_link_libraries(mscz_core PUBLIC
     muse::global
     muse::draw
     engraving
+    mscz_musicxml
 )
 
 if (MUSE_QT_SUPPORT)
@@ -206,6 +225,14 @@ target_compile_definitions(mscz_probe PRIVATE
 target_link_libraries(mscz_probe PRIVATE mscz_core)
 
 # Explicit regression target: not part of the shipping binaries.
+add_executable(mscz_musicxml_test EXCLUDE_FROM_ALL ../test/musicxml.cpp)
+add_dependencies(mscz_musicxml_test mscz_resource_manifest)
+target_link_libraries(mscz_musicxml_test PRIVATE mscz_core)
+target_compile_definitions(mscz_musicxml_test PRIVATE
+    MSCZ_RESOURCE_ROOT="${MU_ROOT}"
+    MSCZ_RESOURCE_MANIFEST="${MSCZ_RESOURCE_MANIFEST}"
+)
+
 add_executable(mscz_svg_symbols_test EXCLUDE_FROM_ALL ../test/svg_symbols.cpp)
 add_dependencies(mscz_svg_symbols_test mscz_resource_manifest)
 target_link_libraries(mscz_svg_symbols_test PRIVATE mscz_core)

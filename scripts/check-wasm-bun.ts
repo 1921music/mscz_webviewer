@@ -23,8 +23,8 @@ const edge = option('browser', process.env.BUN_CHROME_PATH || [
 ].find(existsSync) || '')
 assert(existsSync(edge), 'Edge not found; pass --browser PATH')
 assert(existsSync(standalone || path.join(web, 'mscz-engine.wasm')), `Build wasm first; missing ${standalone || web}`)
-const scores = (await readdir(samples)).filter(f => f.endsWith('.mscz')).sort()
-assert(scores.length > 0, `No .mscz samples in ${samples}`)
+const scores = (await readdir(samples)).filter(f => /\.(mscz|musicxml|xml|mxl)$/i.test(f)).sort()
+assert(scores.length > 0, `No supported scores in ${samples}`)
 await mkdir(out, { recursive: true })
 
 // Prove that the one HTML works in an otherwise empty folder, offline. Do
@@ -161,7 +161,8 @@ try {
       assert.equal(await view.evaluate('location.protocol'), 'file:', 'standalone did not use file://')
       await chooseFile(name)
     } else {
-      await view.navigate(`${server!.url}index.html?textFonts=${encodeURIComponent(textFonts)}&score=${encodeURIComponent('/samples/' + name)}`)
+      const sampleUrl = '/samples/' + name + (/\.(mxl|musicxml|xml)$/i.test(name) ? '?download=1' : '')
+      await view.navigate(`${server!.url}index.html?textFonts=${encodeURIComponent(textFonts)}&score=${encodeURIComponent(sampleUrl)}`)
     }
     await waitFor("document.querySelector('#status').textContent.includes('page(s)')")
     const state: any = await view.evaluate(inspect)
@@ -173,6 +174,8 @@ try {
     if (name === 'Morning_Gm.mscz') {
       assert.equal(state.pages, 1, 'legacy rehearsal alignment pushed Morning_Gm onto a second page')
     }
+    if (name === 'Bella_Ciao.mxl') assert.equal(state.pages, 3, 'Bella Ciao differs from reference PDF page count')
+    if (name === 'Bring It On Home To Me.mxl') assert.equal(state.pages, 18, 'Bring It On Home To Me differs from reference PDF page count')
     assert(state.paths > 0 && state.visible && state.invalid === 0, `${name}: invalid or empty rendering`)
     assert(state.uniqueIds && state.localReferences && state.separateFonts, `${name}: SVG definitions leak across pages`)
     assert.equal(state.notationText, 0, `${name}: music symbols remain selectable`)
@@ -189,14 +192,14 @@ try {
         const widths = nodes.map(t => {
           const s = getComputedStyle(t);
           ctx.font = s.fontStyle + ' ' + s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily;
-          return { svg: t.getComputedTextLength(), canvas: ctx.measureText(t.textContent).width, family: s.fontFamily };
+          return { svg: t.getComputedTextLength(), canvas: ctx.measureText(t.textContent).width, family: s.fontFamily, text: t.textContent };
         });
         return {families, monoI, monoW, widths, stats: backend.stats};
       })()`)
       assert(checked.families[0].endsWith('serif') && checked.families[1].endsWith('sans-serif') && checked.families[2].endsWith('monospace'))
       assert(Math.abs(checked.monoI - checked.monoW) < 0.01, 'monospace fallback has unequal advances')
       for (const width of checked.widths) {
-        assert(width.svg > 0 && Math.abs(width.svg - width.canvas) < Math.max(1, width.canvas * 0.02), `${name}: CJK SVG and browser metrics disagree`)
+        assert(width.svg > 0 && Math.abs(width.svg - width.canvas) < Math.max(1, width.canvas * 0.02), `${name}: CJK SVG and browser metrics disagree: ${JSON.stringify(width)}`)
         assert(width.family.includes('serif') || width.family.includes('monospace'), `${name}: CJK font stack lost`)
       }
       if (checked.widths.length) assert(checked.stats.cjk > 0, `${name}: CJK text bypassed browser metrics`)

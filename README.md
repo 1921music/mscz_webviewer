@@ -1,8 +1,45 @@
 # mscz_test — mscz をブラウザで表示する（Qt非依存・SVG出力）
 
-MuseScore の `.mscz` をブラウザで表示し、移調して表示できるようにするための実験リポジトリ。
+MuseScore の `.mscz` と MusicXML（`.musicxml` / `.xml` / 圧縮版 `.mxl`）をブラウザで表示し、移調して表示できるようにするための実験リポジトリ。
 将来 [podium](https://github.com/studiop5/podium) に組み込むことを想定しているが、**このリポジトリの
 ゴールは単体で Web 表示できるところまで**。
+
+## MusicXML の読み込み
+
+`.musicxml` / `.xml`（score-partwise）と圧縮版`.mxl`を、通常版・単一HTML版の両方で読み込める。
+ファイル選択、ドラッグ＆ドロップ、`?score=URL`、JSの`engine.open(bytes, name)`で利用できる。
+`name`の拡張子で読み込み形式を選ぶため、MusicXMLでは実際の拡張子を渡す。
+読み込み後の表示・ズーム・元譜基準の移調はMSCZと共通。元ファイルは変更しない。
+
+インポーターはエンジンと同じMuseScore v4.7.5
+(`3654226c2e99289916916953a98e585a3d3b315a`) の2パス処理を直接利用する。
+出典・元ソースのSHA-256・ローカル変更は
+`vendor/aria/src/importexport/musicxml/SOURCE.json`に記録する。
+再取得は`python3 scripts/vendor-musicxml.py --source ../MuseScore`。
+`vendor-aria.sh`で全体を取り直した場合も、このスクリプトを後から実行する。
+MusicXML書き出し、GUI、XSD検証は組み込まない（本家の同モジュールもXSD検証を無効化）。
+XML構文の読み取り・楽譜への変換は本家のパーサーを使う。
+
+本家の`NotationProject::doImport()`に合わせ、コードリストを初期化してから読み込み、
+`EngravingProject::setupMasterScore()`で仕上げる。インポート時の既定設定も本家を使い、
+MusicXMLに含まれる改行・改ページ・書体を取り込む。MSC形式の旧版互換処理は適用しない。
+`.mxl`は既存ZIP実装とホストのストリームから`META-INF/container.xml`のrootfileを読み込む。
+ブラウザのファイルシステムやサーバー側変換は不要。
+
+`mscz_musicxml_test`で、通常XMLとMXLの組版一致・入れ子のrootfile・不正コンテナ・
+移調とリセットを検証する。サンプルのパスを引数に渡すと圧縮前後の一致も検証する。
+ブラウザの検証は`scripts/check-wasm-bun.ts`で既存MSCZと併せて行う。
+
+2026-11-03のサイズ比較（変更前`bd42a06`、同じMinSizeRel・サイズ最適化・LTO設定）:
+
+| 成果物 | 変更前（bytes） | MusicXML対応後（bytes） | 増加 |
+|---|---:|---:|---:|
+| WASM本体 | 4,507,893 | 4,791,882 | 283,989（6.30%） |
+| WASM gzip-9 | 1,704,412 | 1,802,933 | 98,521（5.78%） |
+| WASM Brotli-11 | 1,303,938 | 1,380,107 | 76,169（5.84%） |
+| 単一HTML全体 | 3,652,533 | 3,784,130 | 131,597（3.60%） |
+
+WASM圧縮値は配信用に測ったサイズ。単一HTMLは従来どおり各素材をgzip圧縮してからbase64化する。
 
 ベースにするのは [aria](https://github.com/hdi200/aria)（MuseScore Studio 4.7.5 派生のスコアリーダー）の
 レンダーコア。想定配置:

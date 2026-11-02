@@ -4,7 +4,7 @@
 
   Part of mscz_test. Built on MuseScore-derived code; see vendor/aria/VENDOR.md.
 
-  Drop a .mscz on the page and it is laid out and drawn, in the browser, with
+  Drop a .mscz or MusicXML score on the page and it is laid out and drawn, in the browser, with
   nothing going to a server. Serve this directory over HTTP -- the module is an
   ES module, so file:// will not do:
 
@@ -13,7 +13,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>mscz_test — .mscz in the browser</title>
+<title>mscz_test — MuseScore / MusicXML in the browser</title>
 <style>
   html { overflow-y: scroll; }
   body { font: 14px system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #27272a; }
@@ -32,7 +32,7 @@
 <body>
 
 <header>
-  <input type="file" id="file" accept=".mscz" disabled>
+  <input type="file" id="file" accept=".mscz,.musicxml,.xml,.mxl" disabled>
   <div role="group" aria-label="表示の移調">
     <button id="transposeDown" type="button" disabled>− 半音</button>
     <output id="transposeValue" aria-live="polite">原調</output>
@@ -55,7 +55,7 @@
   <span id="status">loading the engine…</span>
 </header>
 
-<div id="drop">or drop a .mscz here</div>
+<div id="drop">or drop a .mscz, .musicxml, .xml or .mxl here</div>
 <div id="pages"></div>
 
 <script type="module">
@@ -236,7 +236,8 @@ if (wanted) {
     const res = await fetch(wanted)
     if (!res.ok) { throw new Error(`${res.status} ${res.statusText}`) }
     const bytes = new Uint8Array(await res.arrayBuffer())
-    adoptScore(mscz.open(bytes, wanted.split('/').pop()))
+    const name = decodeURIComponent(new URL(wanted, location.href).pathname.split('/').pop())
+    adoptScore(mscz.open(bytes, name))
   } catch (e) {
     status.textContent = `${wanted}: ${e.message}`
   }
