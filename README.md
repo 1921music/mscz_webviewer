@@ -40,7 +40,7 @@ The component rows show the regular build's individual files. The standalone HTM
 
 ## Development
 
-The rendering core is C++, compiled to WebAssembly without Qt. The web interface lives in [`web/`](web/), the browser integration in [`src/`](src/), and build and verification scripts in [`scripts/`](scripts/).
+The C++ rendering core is adapted from aria and MuseScore Studio. This project removes the Qt dependencies from the upstream rendering code so that the core can be compiled to WebAssembly without Qt. The web interface lives in [`web/`](web/), the browser integration in [`src/`](src/), and build and verification scripts in [`scripts/`](scripts/).
 
 For build instructions, architecture, provenance, benchmarks, and implementation history, see [Development notes](DEVELOPMENT_NOTES.md). These notes include historical plans and machine-specific paths. GitHub Pages serves the checked-in standalone HTML from `main` → `/docs`.
 
@@ -90,7 +90,7 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 ### 開発について
 
-描画コアは C++ 製で、Qt に依存せず WebAssembly にコンパイルします。Web UI は [`web/`](web/)、ブラウザー連携は [`src/`](src/)、ビルド・検証スクリプトは [`scripts/`](scripts/) にあります。
+描画コアは aria・MuseScore Studio 由来の C++ コードを基にしています。本プロジェクトでは、元の描画コードにあった Qt 依存を取り除き、Qt を使わずに WebAssembly にコンパイルできるようにしています。Web UI は [`web/`](web/)、ブラウザー連携は [`src/`](src/)、ビルド・検証スクリプトは [`scripts/`](scripts/) にあります。
 
 ビルド手順・設計・コードの来歴・性能計測・実装経緯は [開発メモ](DEVELOPMENT_NOTES.md) にまとめています。開発メモには過去の計画や環境固有のパスも含まれます。GitHub Pages は `main` ブランチの `/docs` に保存した単一 HTML を公開しています。
 
