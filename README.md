@@ -1,8 +1,46 @@
+公開版: [https://1921music.github.io/mscz_webviewer/](https://1921music.github.io/mscz_webviewer/)
+
 # mscz_test — mscz をブラウザで表示する（Qt非依存・SVG出力）
+
+このプロジェクトは [aria](https://github.com/hdi200/aria) の多くのコードを利用しています。
+また、[MuseScore Studio](https://github.com/musescore/MuseScore) からも一部のコードを直接取り込んでいます
+（MusicXML インポーターなど）。aria 自体も MuseScore Studio を基にしています。
+原著作者・貢献者の皆さまに感謝します。
 
 MuseScore の `.mscz` と MusicXML（`.musicxml` / `.xml` / 圧縮版 `.mxl`）をブラウザで表示し、移調して表示できるようにするための実験リポジトリ。
 将来 [podium](https://github.com/studiop5/podium) に組み込むことを想定しているが、**このリポジトリの
 ゴールは単体で Web 表示できるところまで**。
+
+## 単一 HTML とファイルサイズ
+
+公開版は **JavaScript・WASM・フォントなどの必要な素材をすべて内包した、1 個の HTML ファイル**です。
+[単一 HTML をダウンロード](https://github.com/1921music/mscz_webviewer/raw/refs/heads/main/docs/index.html)し、
+保存した `index.html` を Edge などの対応ブラウザーで直接開けば、**`file://` でもオフラインで利用できます**。
+サーバーの起動や、別の WASM・フォントファイルのダウンロードは不要です。
+楽譜は「ファイルの選択」またはドラッグ＆ドロップで開きます。URL から楽譜を取得する場合は通信が必要です。
+
+2026-11-03 時点の実測サイズ（MiB = 1,048,576 bytes、KiB = 1,024 bytes）:
+
+| ファイル | サイズ（bytes） | 換算 |
+|---|---:|---:|
+| 公開する単一 HTML（`docs/index.html`） | 3,784,130 | 3.61 MiB |
+| WASM 本体（`mscz-engine.wasm`） | 4,791,882 | 4.57 MiB |
+| エンジン JavaScript（`mscz-engine.js`） | 17,138 | 16.74 KiB |
+| JavaScript ラッパー（`mscz.js`） | 7,349 | 7.18 KiB |
+| フォント制御 JavaScript（`text-fonts.js`） | 5,687 | 5.55 KiB |
+
+WASM と JavaScript の各行は通常版のビルド成果物のサイズです。
+単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、WASM 本体より小さくなっています。
+**3.61 MiB は WASM・フォントを含む HTML 全体のサイズ**で、表の各ファイルを追加で取得する必要はありません。
+
+## ライセンス
+
+本プロジェクトは **GNU General Public License version 3 only（GPL-3.0-only）** で公開します。
+aria・MuseScore 由来の GPL コードを含むため、権利者から別途許諾を得ない限り、現在のビューアー全体を MIT ライセンスに変更することはできません。
+ライセンス全文は [LICENSE.txt](LICENSE.txt)、取り込み元と第三者素材の情報は
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) を参照してください。
+各ファイルの著作権・ライセンス表記は保持し、フォントや第三者ライブラリーにはそれぞれのライセンスが適用されます。
+公開している単一 HTML 版のソースコードとビルド手順は、このリポジトリで提供しています。
 
 ## MusicXML の読み込み
 
@@ -338,9 +376,9 @@ engraving は 471 個の `.cpp` が密に依存し合っているので、**フ�
 ### ライセンス
 
 **aria / MuseScore は GPL-3.0-only。** そのソースをこのリポジトリに取り込むと、
-**このリポジトリ自体が GPL-3.0-only になる。** このリポジトリに podium のコードは
+**ビューアー全体の配布には GPL-3.0-only が適用される。** このリポジトリに podium のコードは
 入らないので、**GPL-3.0-only で公開すればそれで完結する。**
-取り込み時に `LICENSE` と第三者通知を整えること。
+ライセンス全文は `LICENSE.txt`、第三者通知は `THIRD_PARTY_NOTICES.md` に記載している。
 
 AGPL が関わるのは podium に組み込む段階だけ。詳細は後述の「将来の podium 組み込み」。
 
