@@ -119,6 +119,16 @@ Phase 1 でネイティブの参照出力を取っておくのは、この差分
 - サイズ最小化が要件。後述の方針に従う
 - → 実測結果は「Phase 3 の実測結果」節
 
+## GitHub Pages
+
+公開版: https://1921music.github.io/mscz_webviewer/
+
+`docs/index.html` はエンジンとフォントを内包する単一HTML版。
+このファイルを保存すればオフラインでも利用できる。
+GitHub Pages は `main` ブランチの `/docs` を公開する。
+更新時は `scripts/build-wasm.sh` でビルドし、`build/web/index-standalone.html` を
+`docs/index.html` にコピーしてコミット・pushする。
+
 ## 単一HTML版（file:// 対応）
 
 `scripts/build-wasm.sh` は通常のHTTP用ペイロードに加え、
