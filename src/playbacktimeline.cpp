@@ -30,6 +30,7 @@ struct Event { double time; int part, channel, type, a, b; };
 bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::string& error) {
     using namespace mu::engraving;
     if (!score || !score->firstMeasure()) { error = "The score has no measures."; return false; }
+    for (auto* part : score->parts()) part->updateHarmonyChannels(false);
     score->rebuildMidiMapping();
     score->setExpandRepeats(true);
     // The display-only load path has no sequencer to refresh the unwound
@@ -39,12 +40,18 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
     EventsHolder events;
     CompatMidiRendererInternal::Context context;
     context.applyCaesuras = true;
-    context.harmonyChannelSetting = CompatMidiRendererInternal::DISABLED;
+    context.harmonyChannelSetting = CompatMidiRendererInternal::DEFAULT;
     // GM does not implement MuseScore's sound-specific breath-controller dynamics.
     context.sndController = CTRL_EXPRESSION;
     CompatMidiRender::renderScore(score, events, context, true);
-    const auto& parts = score->parts();
-    if (parts.size() > 128) { error = "Playback supports at most 128 parts."; return false; }
+    // Keep score parts first, then expose each harmony channel as an independent
+    // mixer part. The worker already isolates synth state and controls per row.
+    std::vector<std::pair<Part*, bool>> parts;
+    for (auto* part : score->parts()) parts.emplace_back(part, false);
+    for (auto* part : score->parts()) {
+        if (part->harmonyChannel() && part->harmonyCount() > 0) parts.emplace_back(part, true);
+    }
+    if (parts.size() > 128) { error = "Playback supports at most 128 parts including chord accompaniment."; return false; }
     std::map<int, std::pair<int, int>> channels;
     std::vector<Event> timeline;
     std::ostringstream json; json << std::setprecision(12) << "{\"parts\":[";
@@ -52,13 +59,17 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
         if (p) json << ',';
         int next = 0, volume = 100, pan = 64;
         bool first = true;
-        json << "{\"name\":" << quoted(parts[p]->partName().toStdString()) << ",\"channels\":[";
+        auto* part = parts[p].first;
+        const bool harmony = parts[p].second;
+        json << "{\"name\":" << quoted(part->partName().toStdString() + (harmony ? "：コード" : ""))
+             << ",\"kind\":" << quoted(harmony ? "harmony" : "instrument") << ",\"channels\":[";
         for (size_t i = 0; i < score->midiMapping().size(); ++i) {
             auto& mapping = score->midiMapping()[i];
-            if (mapping.part() != parts[p]) continue;
+            if (mapping.part() != part) continue;
             const auto* ch = mapping.articulation();
+            if (ch->isHarmonyChannel() != harmony) continue;
             // Reserve channel 10 for GM percussion within each independent part.
-            const bool drum = mapping.channel() == 9;
+            const bool drum = !harmony && mapping.channel() == 9;
             if (!drum && next == 9) ++next;
             int local = drum ? 9 : next++;
             if (local > 15) { error = "A part has too many simultaneous instrument channels."; return false; }

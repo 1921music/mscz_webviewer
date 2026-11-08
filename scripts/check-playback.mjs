@@ -20,9 +20,19 @@ for (const file of [path.resolve('test/playback.musicxml'), ...process.argv.slic
   if (file.endsWith('playback.musicxml')) {
     assert(Math.abs(data.duration - 12) < 0.01, JSON.stringify(data))
     assert.equal(notes.filter(e => e[1] === 0).length, 8)
-    const pitch = notes[0][3]
+    assert.equal(data.parts.length, 3)
+    assert.equal(data.parts[2].kind, 'harmony')
+    assert.equal(data.parts[2].name, 'Piano "A"：コード')
+    const chords = notes.filter(e => e[1] === 2)
+    assert(chords.length >= 12, 'chord symbols must produce independent MIDI notes')
+    assert(chords.some(e => Math.abs(e[0] - 6) < 0.01), 'chords must follow repeats')
+    const pitch = notes.find(e => e[1] === 0)[3]
     score.setViewTransposeSemitones(2)
-    assert.equal(score.playbackTimeline().events.find(e => (e[2] & 0xf0) === 0x90 && e[4] > 0)[3], pitch + 2)
+    const transposed = score.playbackTimeline().events.filter(e => (e[2] & 0xf0) === 0x90 && e[4] > 0)
+    assert.equal(transposed.find(e => e[1] === 0)[3], pitch + 2)
+    // MuseScore may revoice a chord into another octave after transposition.
+    const pitchClasses = events => events.map(e => [e[0], e[3] % 12]).sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    assert.deepEqual(pitchClasses(transposed.filter(e => e[1] === 2)), pitchClasses(chords.map(e => [e[0], e[1], e[2], e[3] + 2])))
     score.clearViewTranspose()
     assert.deepEqual(score.playbackTimeline(), data)
   }
