@@ -9,7 +9,7 @@ export function attachPlayback (mscz, backend) {
   const player = new Playback(mscz, backend, () => {
     play.disabled = busy || !player.timeline || player.state === 'loading'
     stop.disabled = !player.timeline || player.state === 'stopped'
-    play.textContent = player.state === 'playing' ? '一時停止' : player.state === 'loading' ? '準備中…' : '再生'
+    play.textContent = player.state === 'playing' ? 'Pause' : player.state === 'loading' ? 'Loading…' : 'Play'
     root.querySelector('#playbackTime').textContent = `${clock(player.position)} / ${clock(player.timeline?.duration || 0)}`
     message.textContent = player.error || ''
   })
@@ -26,8 +26,8 @@ export function attachPlayback (mscz, backend) {
       rows.replaceChildren()
       player.timeline?.parts.forEach((part, i) => {
         const tr = document.createElement('tr')
-        const name = document.createElement('th'); name.scope = 'row'; name.textContent = part.name || `パート ${i + 1}`; tr.append(name)
-        for (const [key, label] of [['volume', '音量'], ['pan', 'パン'], ['mute', 'ミュート'], ['solo', 'ソロ']]) {
+        const name = document.createElement('th'); name.scope = 'row'; name.textContent = part.name || `Part ${i + 1}`; tr.append(name)
+        for (const [key, label] of [['volume', 'Volume'], ['pan', 'Pan'], ['mute', 'Mute'], ['solo', 'Solo']]) {
           const td = document.createElement('td'), input = document.createElement('input')
           const toggle = key === 'mute' || key === 'solo'
           input.type = toggle ? 'checkbox' : 'range'

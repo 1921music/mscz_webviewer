@@ -61,7 +61,7 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
         bool first = true;
         auto* part = parts[p].first;
         const bool harmony = parts[p].second;
-        json << "{\"name\":" << quoted(part->partName().toStdString() + (harmony ? "：コード" : ""))
+        json << "{\"name\":" << quoted(part->partName().toStdString() + (harmony ? ": Chords" : ""))
              << ",\"kind\":" << quoted(harmony ? "harmony" : "instrument") << ",\"channels\":[";
         for (size_t i = 0; i < score->midiMapping().size(); ++i) {
             auto& mapping = score->midiMapping()[i];

@@ -22,7 +22,7 @@ for (const file of [path.resolve('test/playback.musicxml'), ...process.argv.slic
     assert.equal(notes.filter(e => e[1] === 0).length, 8)
     assert.equal(data.parts.length, 3)
     assert.equal(data.parts[2].kind, 'harmony')
-    assert.equal(data.parts[2].name, 'Piano "A"：コード')
+    assert.equal(data.parts[2].name, 'Piano "A": Chords')
     const chords = notes.filter(e => e[1] === 2)
     assert(chords.length >= 12, 'chord symbols must produce independent MIDI notes')
     assert(chords.some(e => Math.abs(e[0] - 6) < 0.01), 'chords must follow repeats')

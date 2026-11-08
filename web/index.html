@@ -10,7 +10,7 @@
 
       python3 -m http.server --directory build/web
 -->
-<html lang="ja">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>mscz_test — MuseScore / MusicXML in the browser</title>
@@ -33,27 +33,27 @@
 
 <header>
   <input type="file" id="file" accept=".mscz,.musicxml,.xml,.mxl" disabled>
-  <div role="group" aria-label="表示の移調">
-    <button id="transposeDown" type="button" disabled>− 半音</button>
-    <output id="transposeValue" aria-live="polite">原調</output>
-    <button id="transposeUp" type="button" disabled>＋ 半音</button>
-    <button id="transposeReset" type="button" disabled>原調に戻す</button>
-    <select id="transposeSpelling" aria-label="移調の表記方針" disabled>
-      <option value="readable">読みやすさ優先</option>
-      <option value="preserve">元譜維持</option>
+  <div role="group" aria-label="Display transposition">
+    <button id="transposeDown" type="button" disabled>− semitone</button>
+    <output id="transposeValue" aria-live="polite">Original key</output>
+    <button id="transposeUp" type="button" disabled>+ semitone</button>
+    <button id="transposeReset" type="button" disabled>Reset key</button>
+    <select id="transposeSpelling" aria-label="Pitch spelling" disabled>
+      <option value="readable">Readable spelling</option>
+      <option value="preserve">Preserve spelling</option>
     </select>
   </div>
-  <div role="group" aria-label="譜面の拡大縮小">
-    <button id="zoomOut" type="button" aria-label="縮小">−</button>
+  <div role="group" aria-label="Score zoom">
+    <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
     <output id="zoomValue" aria-live="polite">100%</output>
-    <button id="zoomIn" type="button" aria-label="拡大">＋</button>
-    <button id="zoomReset" type="button">幅に合わせる</button>
+    <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
+    <button id="zoomReset" type="button">Fit width</button>
   </div>
   <label>dpi <input type="number" id="dpi" value="300" min="72" max="1200" step="12" style="width: 5em"></label>
   <label><input type="checkbox" id="pathSymbols" checked> symbols as paths</label>
   <label><input type="checkbox" id="embedFonts" checked> embed font subsets</label>
   <!-- PLAYBACK_BEGIN -->
-  <label><input type="checkbox" id="showPlayback" aria-controls="playback" checked> 再生パネル</label>
+  <label><input type="checkbox" id="showPlayback" aria-controls="playback" checked> Playback panel</label>
   <!-- PLAYBACK_END -->
   <span id="status">loading the engine…</span>
 </header>
@@ -62,14 +62,14 @@
 <div id="pages"></div>
 
 <!-- PLAYBACK_BEGIN -->
-<section id="playback" aria-label="演奏" style="position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;padding:8px 16px;z-index:2">
-  <button id="play" type="button" disabled>再生</button>
-  <button id="stop" type="button" disabled>停止</button>
+<section id="playback" aria-label="Playback" style="position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;padding:8px 16px;z-index:2">
+  <button id="play" type="button" disabled>Play</button>
+  <button id="stop" type="button" disabled>Stop</button>
   <output id="playbackTime">0:00 / 0:00</output>
-  <label>全体音量 <input id="masterVolume" type="range" min="0" max="100" value="80"></label>
+  <label>Master volume <input id="masterVolume" type="range" min="0" max="100" value="80"></label>
   <span id="playbackStatus" role="status"></span>
-  <details><summary>ミキサー</summary>
-    <div style="max-height:32vh;overflow:auto"><table><thead><tr><th>パート</th><th>音量</th><th>パン（左 ↔ 右）</th><th>ミュート</th><th>ソロ</th></tr></thead><tbody id="mixerRows"></tbody></table></div>
+  <details><summary>Mixer</summary>
+    <div style="max-height:32vh;overflow:auto"><table><thead><tr><th>Part</th><th>Volume</th><th>Pan (L ↔ R)</th><th>Mute</th><th>Solo</th></tr></thead><tbody id="mixerRows"></tbody></table></div>
   </details>
 </section>
 <style>#pages { padding-bottom:var(--playback-padding, 110px) } #playback th { text-align:left; padding-right:12px } #playback input[type=range] { max-width:130px } #playback td { padding:3px 8px } </style>
@@ -124,7 +124,7 @@ function updateTransposeControls () {
   playback?.setBusy(busy)
   // PLAYBACK_END
   const offset = score ? score.viewTransposeSemitones : 0
-  document.getElementById('transposeValue').textContent = offset === 0 ? '原調' : `${offset > 0 ? '+' : ''}${offset} 半音`
+  document.getElementById('transposeValue').textContent = offset === 0 ? 'Original key' : `${offset > 0 ? '+' : ''}${offset} semitone${Math.abs(offset) === 1 ? '' : 's'}`
   document.getElementById('transposeDown').disabled = !score || busy || offset <= -12
   document.getElementById('transposeUp').disabled = !score || busy || offset >= 12
   document.getElementById('transposeReset').disabled = !score || busy || offset === 0
@@ -250,7 +250,7 @@ async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) 
   // PLAYBACK_END
   busy = true
   updateTransposeControls()
-  status.textContent = '移調中…'
+  status.textContent = 'Transposing…'
   // Let the busy state appear before the synchronous engine/layout work.
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
   try {
@@ -260,7 +260,7 @@ async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) 
     // PLAYBACK_END
     render()
   } catch (e) {
-    status.textContent = `移調できません: ${e.message}`
+    status.textContent = `Could not transpose: ${e.message}`
   } finally {
     busy = false
     updateTransposeControls()
