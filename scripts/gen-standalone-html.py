@@ -81,10 +81,6 @@ def main():
                                'wasm': compressed((web / 'mscz-synth.wasm').read_bytes())}
         if (web / 'sonivox.sf3').exists():
             payload['playback']['font'] = compressed((web / 'sonivox.sf3').read_bytes())
-        # Preserve third-party notices in the downloadable single-file edition.
-        import html as html_module
-        notices = html_module.escape((web / 'playback-LICENSE.txt').read_text(encoding='utf-8'))
-        html = html.replace('</body>', '<details style="margin:16px 16px 120px"><summary>Audio licenses</summary><pre style="white-space:pre-wrap">' + notices + '</pre></details></body>')
     # Escape raw HTML delimiters even if a resource alias later contains one.
     data = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).replace("<", "\\u003c")
     bootstrap = """

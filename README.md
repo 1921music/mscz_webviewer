@@ -91,24 +91,24 @@ Measured on November 9, 2026, with default EAS playback. MiB = 1,048,576 bytes; 
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,149,501** | **3.96 MiB** |
+| **Complete standalone HTML** (`docs/index.html`) | **4,137,791** | **3.95 MiB** |
 | WASM engine (`mscz-engine.wasm`) | 4,880,805 | 4.65 MiB |
 | Engine JavaScript (`mscz-engine.js`) | 17,189 | 16.79 KiB |
 | JavaScript wrapper (`mscz.js`) | 7,582 | 7.40 KiB |
 | Font handling (`text-fonts.js`) | 5,687 | 5.55 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.96 MiB total includes the engine, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.95 MiB total includes the engine, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
 | Backend | Engine WASM | Engine gzip | Synth WASM + bank | Synth + bank gzip | Standalone HTML |
 |---|---:|---:|---:|---:|---:|
 | OFF | 4,793,287 | 1,803,050 | 0 | 0 | 3,784,753 |
-| EAS | 4,880,805 | 1,841,317 | 258,187 | 210,142 | 4,149,501 |
-| TSF_SF3 | 4,880,805 | 1,841,317 | 923,235 | 261,472 | 4,211,275 |
+| EAS | 4,880,805 | 1,841,317 | 258,187 | 210,142 | 4,137,791 |
+| TSF_SF3 | 4,880,805 | 1,841,317 | 923,235 | 261,472 | 4,205,753 |
 
 The synth columns include the embedded EAS bank or the separate SF3 bank, but
-exclude JavaScript. The standalone column includes all assets and notices.
+exclude JavaScript. The standalone column includes all runtime assets.
 Enabling playback adds 87,518 uncompressed bytes to the score engine, independent
 of the chosen synth. To reproduce the table, save each build's `web/` directory
 under `build/playback/OFF`, `EAS`, or `TSF_SF3`, then run
@@ -162,13 +162,13 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,149,501** | **3.96 MiB** |
+| **単一 HTML 全体**（`docs/index.html`） | **4,137,791** | **3.95 MiB** |
 | WASM 本体（`mscz-engine.wasm`） | 4,880,805 | 4.65 MiB |
 | エンジン JavaScript（`mscz-engine.js`） | 17,189 | 16.79 KiB |
 | JavaScript ラッパー（`mscz.js`） | 7,582 | 7.40 KiB |
 | フォント制御（`text-fonts.js`） | 5,687 | 5.55 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.96 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.95 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 

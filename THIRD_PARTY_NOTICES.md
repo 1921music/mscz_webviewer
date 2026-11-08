@@ -53,6 +53,7 @@ and `vendor/stb/stb_vorbis.c`. The SF3 bank is a lossy conversion of alphaTab's
 SONiVOX-derived SF2; its original license, editing history and conversion details
 are retained in `assets/playback/`. It is not the same bank as EAS's embedded bank.
 
-The selected audio notices are copied to `playback-LICENSE.txt` in the HTTP
-payload and included in the standalone HTML. No playback dependencies are shipped
+The audio licenses and provenance are retained in this repository. Selected
+notices are also copied to `playback-LICENSE.txt` in the HTTP payload; they are
+not displayed in the web application. No playback dependencies are shipped
 by OFF builds. Existing GPL-3.0-only terms for the complete viewer remain in place.
