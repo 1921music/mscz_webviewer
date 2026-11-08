@@ -65,6 +65,7 @@ export class Playback {
     this.state = 'loading'; this.changed()
     try {
       await resumed
+      if (epoch !== this.epoch) return
       await this.ensureWorker()
       if (epoch !== this.epoch) return
       if (!paused) { this.nextTime = this.context.currentTime + 0.06; this.startTime = this.nextTime; this.done = false }

@@ -39,6 +39,12 @@ for (const standalone of [false, true]) {
       expect(notes.length).toBe(8) // tied continuation is not re-struck; repeat is expanded
       expect(notes[0][3]).toBe(60)
       expect(notes[4][0]).toBeCloseTo(6, 1)
+      // Stop must cancel a pending AudioContext resume before it creates a worker.
+      expect(await page.evaluate(async () => {
+        const p = window.__mscz.playback
+        const started = p.play(); p.stop(); await started
+        return { state: p.state, worker: p.worker }
+      })).toEqual({ state: 'stopped', worker: null })
       await page.locator('#play').click()
       await expect.poll(() => page.evaluate(() => ({ state: window.__mscz.playback.state, error: window.__mscz.playback.error })), { timeout: 30000 }).toEqual({ state: 'playing', error: '' })
       await page.locator('#play').click()
