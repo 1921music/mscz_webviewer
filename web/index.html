@@ -52,6 +52,9 @@
   <label>dpi <input type="number" id="dpi" value="300" min="72" max="1200" step="12" style="width: 5em"></label>
   <label><input type="checkbox" id="pathSymbols" checked> symbols as paths</label>
   <label><input type="checkbox" id="embedFonts" checked> embed font subsets</label>
+  <!-- PLAYBACK_BEGIN -->
+  <label><input type="checkbox" id="showPlayback" aria-controls="playback" checked> 再生パネル</label>
+  <!-- PLAYBACK_END -->
   <span id="status">loading the engine…</span>
 </header>
 
@@ -69,7 +72,7 @@
     <div style="max-height:32vh;overflow:auto"><table><thead><tr><th>パート</th><th>音量</th><th>パン（左 ↔ 右）</th><th>ミュート</th><th>ソロ</th></tr></thead><tbody id="mixerRows"></tbody></table></div>
   </details>
 </section>
-<style>#pages { padding-bottom:110px } #playback th { text-align:left; padding-right:12px } #playback input[type=range] { max-width:130px } #playback td { padding:3px 8px } </style>
+<style>#pages { padding-bottom:var(--playback-padding, 110px) } #playback th { text-align:left; padding-right:12px } #playback input[type=range] { max-width:130px } #playback td { padding:3px 8px } </style>
 <!-- PLAYBACK_END -->
 
 <script type="module">
@@ -82,6 +85,13 @@ let playback
 const status = document.getElementById('status')
 const pages = document.getElementById('pages')
 const drop = document.getElementById('drop')
+// PLAYBACK_BEGIN
+const showPlayback = document.getElementById('showPlayback')
+showPlayback.addEventListener('change', () => {
+  document.getElementById('playback').hidden = !showPlayback.checked
+  pages.style.setProperty('--playback-padding', showPlayback.checked ? '110px' : '16px')
+})
+// PLAYBACK_END
 
 let mscz = null
 let score = null

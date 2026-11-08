@@ -41,6 +41,10 @@ Reconfiguration occurs on every invocation, so changing the backend works in
 the same build directory. The output is `web/index.html` and
 `web/index-standalone.html` below the selected build directory.
 
+The top toolbar's `再生パネル` checkbox shows or hides the bottom playback and
+mixer panel. It is checked by default and only appears in audio-enabled builds.
+Hiding the panel does not stop playback or reset mixer settings.
+
 Playback follows the displayed transposition, instrument pitches, repeats and
 tempo changes through the existing MuseScore compatibility MIDI renderer.
 Changing scores or transposition stops playback. Mixer settings survive display
@@ -91,7 +95,7 @@ Measured on November 9, 2026, with default EAS playback. MiB = 1,048,576 bytes; 
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,137,791** | **3.95 MiB** |
+| **Complete standalone HTML** (`docs/index.html`) | **4,138,278** | **3.95 MiB** |
 | WASM engine (`mscz-engine.wasm`) | 4,880,805 | 4.65 MiB |
 | Engine JavaScript (`mscz-engine.js`) | 17,189 | 16.79 KiB |
 | JavaScript wrapper (`mscz.js`) | 7,582 | 7.40 KiB |
@@ -103,9 +107,9 @@ Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
 | Backend | Engine WASM | Engine gzip | Synth WASM + bank | Synth + bank gzip | Standalone HTML |
 |---|---:|---:|---:|---:|---:|
-| OFF | 4,793,287 | 1,803,050 | 0 | 0 | 3,784,753 |
-| EAS | 4,880,805 | 1,841,317 | 258,187 | 210,142 | 4,137,791 |
-| TSF_SF3 | 4,880,805 | 1,841,317 | 923,235 | 261,472 | 4,205,753 |
+| OFF | 4,793,287 | 1,803,050 | 0 | 0 | 3,784,757 |
+| EAS | 4,880,805 | 1,841,317 | 258,187 | 210,142 | 4,138,278 |
+| TSF_SF3 | 4,880,805 | 1,841,317 | 923,235 | 261,472 | 4,206,240 |
 
 The synth columns include the embedded EAS bank or the separate SF3 bank, but
 exclude JavaScript. The standalone column includes all runtime assets.
@@ -148,6 +152,8 @@ MuseScore と MusicXML の楽譜をブラウザーで表示するビューアー
 
 表示中の移調を演奏に反映し、移調・楽譜の切り替え時は停止します。ソロは複数選択でき、ミュートが優先されます。ミキサーの調整は再生中にも反映し、元ファイルは変更しません。移調時はミキサー設定を保ち、別の楽譜を開くと初期値に戻ります。
 
+上部の「再生パネル」チェックボックスで、下部の再生・ミキサーパネルを表示／非表示にできます。初期状態はONで、音声有効ビルドにだけ表示されます。非表示にしても再生とミキサー設定は維持されます。
+
 コード記号の伴奏は、ミキサー末尾の「パート名：コード」に独立して表示します。コード伴奏だけの音量・パン・ミュート・ソロも操作でき、移調・繰り返しに追従します。
 
 ### 単一 HTML とオフライン利用
@@ -162,7 +168,7 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,137,791** | **3.95 MiB** |
+| **単一 HTML 全体**（`docs/index.html`） | **4,138,278** | **3.95 MiB** |
 | WASM 本体（`mscz-engine.wasm`） | 4,880,805 | 4.65 MiB |
 | エンジン JavaScript（`mscz-engine.js`） | 17,189 | 16.79 KiB |
 | JavaScript ラッパー（`mscz.js`） | 7,582 | 7.40 KiB |
