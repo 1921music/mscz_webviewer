@@ -165,17 +165,17 @@ if (EMSCRIPTEN)
     # is then a delivery decision rather than a build one.
     set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
 
-    # configure_file rather than a POST_BUILD copy, because POST_BUILD only
-    # runs when the target itself relinks -- so editing the page and rebuilding
-    # left the old one being served, which cost an afternoon of wondering why
-    # the browser ignored a new URL parameter. configure_file instead makes
-    # these configure-time dependencies, so touching one re-runs cmake and the
-    # copy with it.
+    # Select/copy assets at configure time. Track inputs so rebuilding after
+    # a page, sound bank or notice edit also regenerates the standalone HTML.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/scripts/gen-web-ui.py"
         "${CMAKE_SOURCE_DIR}/web/mscz.js" "${CMAKE_SOURCE_DIR}/web/text-fonts.js"
         "${CMAKE_SOURCE_DIR}/web/index.html" "${CMAKE_SOURCE_DIR}/web/playback.js"
-        "${CMAKE_SOURCE_DIR}/web/playback-worker.js" "${CMAKE_SOURCE_DIR}/web/playback-ui.js")
+        "${CMAKE_SOURCE_DIR}/web/playback-worker.js" "${CMAKE_SOURCE_DIR}/web/playback-ui.js"
+        "${CMAKE_SOURCE_DIR}/assets/playback/sonivox.sf3"
+        "${CMAKE_SOURCE_DIR}/assets/playback/LICENSE" "${CMAKE_SOURCE_DIR}/assets/playback/UPSTREAM.md"
+        "${CMAKE_SOURCE_DIR}/vendor/sonivox/LICENSE" "${CMAKE_SOURCE_DIR}/vendor/tinysoundfont/LICENSE"
+        "${CMAKE_SOURCE_DIR}/vendor/stb/stb_vorbis.c")
     execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/gen-web-ui.py"
         --web "${MSCZ_WEB_DIR}" --backend "${MSCZ_PLAYBACK}" COMMAND_ERROR_IS_FATAL ANY)
     set(MSCZ_PLAYBACK_DEPENDS "")

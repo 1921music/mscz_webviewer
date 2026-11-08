@@ -264,6 +264,7 @@ document.getElementById('transposeSpelling').addEventListener('change', e => tra
 
 document.getElementById('file').addEventListener('change', e => {
   if (e.target.files[0]) { openFile(e.target.files[0]) }
+  e.target.value = '' // Allow selecting the same score again to reset it.
 })
 
 for (const id of ['dpi', 'pathSymbols', 'embedFonts']) {

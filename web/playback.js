@@ -36,7 +36,7 @@ export class Playback {
     if (epoch !== this.epoch) throw new Error('Playback cancelled')
     let url = new URL('playback-worker.js', base)
     if (assets) url = URL.createObjectURL(new Blob([assets.worker], { type: 'text/javascript' }))
-    this.worker = new Worker(url, { type: 'module' })
+    this.worker = new Worker(url, { type: assets ? 'classic' : 'module' })
     if (assets) this.workerURL = url
     this.worker.onmessage = ({ data }) => {
       const call = this.pending.get(data.id)

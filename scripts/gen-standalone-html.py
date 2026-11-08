@@ -70,9 +70,13 @@ def main():
         ui = replace_once((web / "playback-ui.js").read_text(encoding="utf-8"),
                           "from './playback.js'", f"from '{playback}'")
         html = replace_once(html, "from './playback-ui.js'", f"from '{module_url(ui)}'")
-        synth = module_url((web / "mscz-synth.js").read_text(encoding="utf-8"))
+        # A classic blob worker has no module fetches, including under file://
+        # with networking disabled. Inline the generated ES module's factory.
+        synth = replace_once((web / "mscz-synth.js").read_text(encoding="utf-8"),
+                             'export default createSynth;', '')
+        synth = synth.replace('import.meta.url', 'self.location.href')
         worker = replace_once((web / "playback-worker.js").read_text(encoding="utf-8"),
-                              "from './mscz-synth.js'", f"from '{synth}'")
+                              "import createSynth from './mscz-synth.js'", synth)
         payload['playback'] = {'worker': compressed(worker.encode()),
                                'wasm': compressed((web / 'mscz-synth.wasm').read_bytes())}
         if (web / 'sonivox.sf3').exists():
