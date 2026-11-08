@@ -39,3 +39,20 @@ files, including:
 Other dependencies under `vendor/aria/thirdparty` and
 `vendor/aria/src/framework/global/thirdparty` include their own license files
 or per-file license notices. Preserve those notices when redistributing them.
+
+## Optional playback
+
+The EAS build includes SONiVOX (Sonic Network / Android Open Source Project),
+Apache-2.0, with its embedded GM bank. See `vendor/sonivox/LICENSE` and
+`vendor/sonivox/VENDOR.md` for the pinned revision and local portability changes.
+
+The TSF_SF3 build includes TinySoundFont (MIT; Bernhard Schelling, based on
+SFZero by Steve Folta), and stb_vorbis (Sean Barrett and contributors,
+MIT/public-domain dual license). Notices are retained in `vendor/tinysoundfont`
+and `vendor/stb/stb_vorbis.c`. The SF3 bank is a lossy conversion of alphaTab's
+SONiVOX-derived SF2; its original license, editing history and conversion details
+are retained in `assets/playback/`. It is not the same bank as EAS's embedded bank.
+
+The selected audio notices are copied to `playback-LICENSE.txt` in the HTTP
+payload and included in the standalone HTML. No playback dependencies are shipped
+by OFF builds. Existing GPL-3.0-only terms for the complete viewer remain in place.

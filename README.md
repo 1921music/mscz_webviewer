@@ -16,7 +16,66 @@ This project uses substantial portions of [aria](https://github.com/hdi200/aria)
 
 Supported files: **`.mscz`, `.musicxml`, `.xml` (score-partwise), and `.mxl`**.
 
-Scores selected from your device are processed locally in your browser; they are not uploaded to a server. The current interface includes Japanese labels. The viewer focuses on display and transposition; playback and score editing are not included.
+Scores selected from your device are processed locally in your browser; they are not uploaded to a server. The current interface includes Japanese labels. Optional GM playback provides play/pause/stop, master volume, and per-part volume, pan, mute and solo. Score editing is not included.
+
+### Optional GM playback
+
+The default build uses **EAS with its embedded 8-bit GM bank**. Set the CMake
+cache string `MSCZ_PLAYBACK` to `OFF`, `EAS`, or `TSF_SF3`. Only the selected
+backend is shipped. `OFF` removes the playback UI, timeline export, synth WASM,
+worker and sound bank. `TSF_SF3` uses TinySoundFont with stb_vorbis and a bundled
+SONiVOX-derived SF3 GM bank. Both online and standalone editions work without
+contacting an audio service; the standalone HTML embeds all required assets.
+
+In the WSL development environment, run from the repository root:
+
+```sh
+mise trust
+mise install
+MSCZ_PLAYBACK=EAS BUILD_DIR="$HOME/build/mscz-webviewer" mise exec -- bash scripts/build-wasm.sh
+MSCZ_PLAYBACK=TSF_SF3 BUILD_DIR="$HOME/build/mscz-webviewer" mise exec -- bash scripts/build-wasm.sh
+MSCZ_PLAYBACK=OFF BUILD_DIR="$HOME/build/mscz-webviewer" mise exec -- bash scripts/build-wasm.sh
+```
+
+Reconfiguration occurs on every invocation, so changing the backend works in
+the same build directory. The output is `web/index.html` and
+`web/index-standalone.html` below the selected build directory.
+
+Playback follows the displayed transposition, instrument pitches, repeats and
+tempo changes through the existing MuseScore compatibility MIDI renderer.
+Changing scores or transposition stops playback. Mixer settings survive display
+transposition, but reset when opening another score. Multiple solo parts are
+allowed; mute takes precedence over solo. Volume and pan initially come from
+the score's primary instrument channel. Mixer changes take effect within the
+short audio buffering window (normally less than half a second) and never
+modify the score file. Explicit harmony/chord-symbol accompaniment is disabled;
+written notes, including drum parts, are played.
+
+This is GM playback, not Muse Sounds or a full desktop mixer. The backends may
+sound different; reverb/chorus, runtime instrument editing, seeking and persistent
+mixer presets are not implemented. Audio is synthesized in a worker, in short
+buffers rather than allocating an entire song's PCM. Pause preserves both the
+playback position and sustained voices. Very large scores can underrun on slow
+devices. At most 128 parts and 15 melodic instrument channels plus percussion
+per part are supported.
+
+Both synth adapters expose the same `synth_font/create/event/render/destroy`
+interface. The worker owns one synth instance per score part (including drum
+parts), so parts that share a GM channel can still be mixed independently.
+Each render returns 256 stereo PCM frames at 44.1 kHz; the browser schedules
+short buffers through Web Audio. The SF3 bank's decoded samples are shared
+between its part instances. Backend-specific code stays in `src/synth/`.
+
+Browser checks (all unexpected external requests are blocked and fail the test):
+
+```sh
+mise exec -- npm install
+mise exec -- npx playwright install chromium
+MSCZ_WEB_DIR="$HOME/build/mscz-webviewer/web" MSCZ_PLAYBACK=EAS mise exec -- npm run test:playback
+```
+
+Use the matching backend name for each build. `MSCZ_TEST_SCORE=/path/to/file.mscz`
+adds an optional real-score smoke test; that score is not copied into the repo.
 
 ## One HTML file, including offline use
 
@@ -26,17 +85,32 @@ The HTML contains the JavaScript, WASM engine, fonts, and other required resourc
 
 ### File sizes
 
-Measured on November 3, 2026. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
+Measured on November 9, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **3,784,130** | **3.61 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,791,882 | 4.57 MiB |
-| Engine JavaScript (`mscz-engine.js`) | 17,138 | 16.74 KiB |
-| JavaScript wrapper (`mscz.js`) | 7,349 | 7.18 KiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,148,973** | **3.96 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,879,885 | 4.65 MiB |
+| Engine JavaScript (`mscz-engine.js`) | 17,189 | 16.79 KiB |
+| JavaScript wrapper (`mscz.js`) | 7,582 | 7.40 KiB |
 | Font handling (`text-fonts.js`) | 5,687 | 5.55 KiB |
 
-The component rows show the regular build's individual files. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.61 MiB total already includes the engine and fonts.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.96 MiB total includes the engine, fonts, synth and GM sound bank.**
+
+Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
+
+| Backend | Engine WASM | Engine gzip | Synth WASM + bank | Synth + bank gzip | Standalone HTML |
+|---|---:|---:|---:|---:|---:|
+| OFF | 4,793,287 | 1,803,050 | 0 | 0 | 3,784,753 |
+| EAS | 4,879,885 | 1,840,921 | 258,187 | 210,142 | 4,148,973 |
+| TSF_SF3 | 4,879,885 | 1,840,921 | 923,235 | 261,472 | 4,210,747 |
+
+The synth columns include the embedded EAS bank or the separate SF3 bank, but
+exclude JavaScript. The standalone column includes all assets and notices.
+Enabling playback adds 86,598 uncompressed bytes to the score engine, independent
+of the chosen synth. To reproduce the table, save each build's `web/` directory
+under `build/playback/OFF`, `EAS`, or `TSF_SF3`, then run
+`mise exec -- python scripts/measure-playback.py build/playback`.
 
 ## Development
 
@@ -66,7 +140,11 @@ MuseScore と MusicXML の楽譜をブラウザーで表示するビューアー
 
 対応形式: **`.mscz`、`.musicxml`、`.xml`（score-partwise）、`.mxl`**。
 
-端末から選択した楽譜はブラウザー内で処理され、サーバーにはアップロードされません。表示と移調を目的としたビューアーで、再生・楽譜編集の機能は含みません。
+端末から選択した楽譜はブラウザー内で処理され、サーバーにはアップロードされません。表示と移調に加え、オプションのGM演奏機能があります。再生・一時停止・停止、全体音量、パート別の音量・パン・ミュート・ソロを操作できます。楽譜編集の機能は含みません。
+
+演奏機能はビルド時に `MSCZ_PLAYBACK=OFF` / `EAS` / `TSF_SF3` で選択できます。標準は内蔵8bit音源の `EAS` です。選ばなかったエンジン・音源は配布物に含みません。単一HTML版も音源を内包し、オフラインで再生できます。ビルド・テストのコマンドは上記「Optional GM playback」を参照してください。
+
+表示中の移調を演奏に反映し、移調・楽譜の切り替え時は停止します。ソロは複数選択でき、ミュートが優先されます。ミキサーの調整は再生中にも反映し、元ファイルは変更しません。移調時はミキサー設定を保ち、別の楽譜を開くと初期値に戻ります。
 
 ### 単一 HTML とオフライン利用
 
@@ -76,17 +154,17 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 ### ファイルサイズ
 
-2026-11-03 時点の実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
+2026-11-09 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **3,784,130** | **3.61 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,791,882 | 4.57 MiB |
-| エンジン JavaScript（`mscz-engine.js`） | 17,138 | 16.74 KiB |
-| JavaScript ラッパー（`mscz.js`） | 7,349 | 7.18 KiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,148,973** | **3.96 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,879,885 | 4.65 MiB |
+| エンジン JavaScript（`mscz-engine.js`） | 17,189 | 16.79 KiB |
+| JavaScript ラッパー（`mscz.js`） | 7,582 | 7.40 KiB |
 | フォント制御（`text-fonts.js`） | 5,687 | 5.55 KiB |
 
-各素材の行は通常版のビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.61 MiB は WASM・フォントを含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.96 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
