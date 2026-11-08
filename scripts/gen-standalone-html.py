@@ -65,6 +65,22 @@ def main():
         resources.append({"name": entry["name"], "data": compressed(path.read_bytes())})
     payload = {"module": compressed(wrapper.encode("utf-8")),
                "wasm": compressed((web / "mscz-engine.wasm").read_bytes()), "resources": resources}
+    if "import { attachPlayback }" in html:
+        playback = module_url((web / "playback.js").read_text(encoding="utf-8"))
+        ui = replace_once((web / "playback-ui.js").read_text(encoding="utf-8"),
+                          "from './playback.js'", f"from '{playback}'")
+        html = replace_once(html, "from './playback-ui.js'", f"from '{module_url(ui)}'")
+        synth = module_url((web / "mscz-synth.js").read_text(encoding="utf-8"))
+        worker = replace_once((web / "playback-worker.js").read_text(encoding="utf-8"),
+                              "from './mscz-synth.js'", f"from '{synth}'")
+        payload['playback'] = {'worker': compressed(worker.encode()),
+                               'wasm': compressed((web / 'mscz-synth.wasm').read_bytes())}
+        if (web / 'sonivox.sf3').exists():
+            payload['playback']['font'] = compressed((web / 'sonivox.sf3').read_bytes())
+        # Preserve third-party notices in the downloadable single-file edition.
+        import html as html_module
+        notices = html_module.escape((web / 'playback-LICENSE.txt').read_text(encoding='utf-8'))
+        html = html.replace('</body>', '<details style="margin:16px 16px 120px"><summary>Audio licenses</summary><pre style="white-space:pre-wrap">' + notices + '</pre></details></body>')
     # Escape raw HTML delimiters even if a resource alias later contains one.
     data = json.dumps(payload, ensure_ascii=True, separators=(",", ":")).replace("<", "\\u003c")
     bootstrap = """
@@ -104,8 +120,16 @@ async function embeddedOptions () {
     resources.push({ name: resource.name, bytes: await decodeEmbedded(resource.data) })
     delete resource.data
   }
+  let playbackAssets
+  if (payload.playback) {
+    playbackAssets = {
+      worker: new TextDecoder().decode(await decodeEmbedded(payload.playback.worker)),
+      wasm: await decodeEmbedded(payload.playback.wasm),
+      font: payload.playback.font ? await decodeEmbedded(payload.playback.font) : null
+    }
+  }
   embeddedPayload = null
-  return { wasmBinary, resources }
+  return { wasmBinary, resources, playbackAssets }
 }
 """
     html = replace_once(html, '<script type="module">',

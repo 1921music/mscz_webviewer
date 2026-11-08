@@ -9,6 +9,12 @@ cmake_minimum_required(VERSION 3.26...3.31)
 
 project(mscz_test LANGUAGES C CXX)
 
+set(MSCZ_PLAYBACK "EAS" CACHE STRING "GM playback backend: OFF, EAS, TSF_SF3")
+set_property(CACHE MSCZ_PLAYBACK PROPERTY STRINGS OFF EAS TSF_SF3)
+if(NOT MSCZ_PLAYBACK MATCHES "^(OFF|EAS|TSF_SF3)$")
+    message(FATAL_ERROR "MSCZ_PLAYBACK must be OFF, EAS or TSF_SF3")
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
@@ -86,8 +92,8 @@ if (NOT MUSE_QT_SUPPORT)
     add_compile_definitions(ENGRAVING_NO_INTERACTIVE)
 endif()
 
-# Display only. Dropping playback also drops engraving's only dependency on the
-# mpe module, which is why mpe is not vendored at all.
+# Keep the desktop playback/MPE stack disabled. Optional GM playback uses the
+# compatibility MIDI renderer and our independent small synth module instead.
 set(MUE_BUILD_ENGRAVING_PLAYBACK OFF CACHE BOOL "" FORCE)
 set(ENGRAVING_NO_API ON CACHE BOOL "" FORCE)
 set(MUE_BUILD_ENGRAVING_QML OFF CACHE BOOL "" FORCE)

@@ -19,6 +19,10 @@ add_library(mscz_core STATIC
     compatfontprovider.cpp
     compatfontprovider.h
 )
+if(NOT MSCZ_PLAYBACK STREQUAL "OFF")
+    target_sources(mscz_core PRIVATE playbacktimeline.cpp)
+    target_compile_definitions(mscz_core PUBLIC MSCZ_ENABLE_PLAYBACK)
+endif()
 
 # MuseScore's two-pass MusicXML importer, without the writer, GUI or XSD
 # validator (the desktop module also disables XSD validation).
@@ -167,10 +171,19 @@ if (EMSCRIPTEN)
     # the browser ignored a new URL parameter. configure_file instead makes
     # these configure-time dependencies, so touching one re-runs cmake and the
     # copy with it.
-    foreach(asset mscz.js text-fonts.js index.html)
-        configure_file("${CMAKE_CURRENT_LIST_DIR}/../web/${asset}"
-                       "${MSCZ_WEB_DIR}/${asset}" COPYONLY)
-    endforeach()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/scripts/gen-web-ui.py"
+        "${CMAKE_SOURCE_DIR}/web/mscz.js" "${CMAKE_SOURCE_DIR}/web/text-fonts.js"
+        "${CMAKE_SOURCE_DIR}/web/index.html" "${CMAKE_SOURCE_DIR}/web/playback.js"
+        "${CMAKE_SOURCE_DIR}/web/playback-worker.js" "${CMAKE_SOURCE_DIR}/web/playback-ui.js")
+    execute_process(COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/gen-web-ui.py"
+        --web "${MSCZ_WEB_DIR}" --backend "${MSCZ_PLAYBACK}" COMMAND_ERROR_IS_FATAL ANY)
+    set(MSCZ_PLAYBACK_DEPENDS "")
+    if(NOT MSCZ_PLAYBACK STREQUAL "OFF")
+        include("${CMAKE_SOURCE_DIR}/cmake/MsczPlayback.cmake")
+        set(MSCZ_PLAYBACK_DEPENDS mscz_synth "${MSCZ_WEB_DIR}/playback.js"
+            "${MSCZ_WEB_DIR}/playback-worker.js" "${MSCZ_WEB_DIR}/playback-ui.js")
+    endif()
 
     add_custom_command(TARGET mscz_wasm POST_BUILD
         COMMAND ${Python3_EXECUTABLE} -I
@@ -194,7 +207,7 @@ if (EMSCRIPTEN)
         COMMAND ${Python3_EXECUTABLE} -I
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
                 --web "${MSCZ_WEB_DIR}"
-        DEPENDS mscz_wasm mscz_resource_manifest
+        DEPENDS mscz_wasm mscz_resource_manifest ${MSCZ_PLAYBACK_DEPENDS}
                 "${MSCZ_RESOURCE_MANIFEST}"
                 "${MSCZ_WEB_DIR}/index.html" "${MSCZ_WEB_DIR}/mscz.js"
                 "${MSCZ_WEB_DIR}/text-fonts.js"

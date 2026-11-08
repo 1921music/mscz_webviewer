@@ -5,6 +5,9 @@
  */
 #include "mscz_engine.h"
 #include "displaytranspose.h"
+#ifdef MSCZ_ENABLE_PLAYBACK
+#include "playbacktimeline.h"
+#endif
 #include "textfontbackend.h"
 #include "musicxmlimport.h"
 #include "importexport/musicxml/internal/musicxmlconfiguration.h"
@@ -229,6 +232,13 @@ Session::Session(std::unique_ptr<Impl> impl)
 }
 
 Session::~Session() = default;
+
+#ifdef MSCZ_ENABLE_PLAYBACK
+bool Session::playbackTimeline(std::string& out, std::string& error)
+{
+    return mscz::playbackTimeline(m_impl->masterScore(), out, error);
+}
+#endif
 
 std::unique_ptr<Session> Session::open(std::unique_ptr<IReadStream> score, const ScoreInfo& info,
                                       std::string& error)

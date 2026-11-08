@@ -151,6 +151,17 @@ mscz::Session* session(int id)
 
 extern "C" {
 
+#ifdef MSCZ_ENABLE_PLAYBACK
+EMSCRIPTEN_KEEPALIVE
+int mscz_playback_timeline(int id)
+{
+    g_error.clear();
+    auto* s = session(id);
+    if (!s) { g_error = "no such session"; return 0; }
+    return s->playbackTimeline(g_result, g_error) ? 1 : 0;
+}
+#endif
+
 //! JS needs somewhere to put bytes before handing them over. Plain malloc, so
 //! the usual HEAPU8.set() works.
 EMSCRIPTEN_KEEPALIVE

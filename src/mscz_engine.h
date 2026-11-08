@@ -62,6 +62,9 @@ public:
     ~Session();
 
     int pageCount() const;
+#ifdef MSCZ_ENABLE_PLAYBACK
+    bool playbackTimeline(std::string& out, std::string& error);
+#endif
 
     //! Absolute display transposition relative to the opened score, in
     //! semitones (-12..12). Keys and chord names follow pitched notes;

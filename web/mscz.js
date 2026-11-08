@@ -16,8 +16,10 @@ import { textFontBackend } from './text-fonts.js'
 // for by name: alternative music fonts, tablature, figured bass.
 const DEFAULT_GROUPS = ['core']
 
-export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, resources, textFonts = 'browser' } = {}) {
+export async function load ({ base = '.', groups = DEFAULT_GROUPS, wasmBinary, resources, textFonts = 'browser', playbackAssets } = {}) {
   const mscz = await create({ wasmBinary, textFonts })
+  mscz.playbackAssets = playbackAssets
+  mscz.base = base
   if (resources) {
     for (const { name, bytes } of resources) { mscz.addResource(name, bytes) }
   } else {
@@ -133,6 +135,15 @@ class Score {
   get pageCount () {
     return this.mscz._pageCount(this.id)
   }
+
+  // PLAYBACK_BEGIN
+  playbackTimeline () {
+    if (!this.id) throw new Error('the score is closed')
+    const fn = this.mscz.m.cwrap('mscz_playback_timeline', 'number', ['number'])
+    if (!fn(this.id)) throw new Error(this.mscz._lastError() || 'Could not generate playback events')
+    return JSON.parse(this.mscz._result())
+  }
+  // PLAYBACK_END
 
   get viewTransposeSemitones () {
     if (!this.id) { throw new Error('the score is closed') }

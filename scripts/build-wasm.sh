@@ -39,7 +39,7 @@ if [ "${1:-}" = "--quick" ]; then
     shift
 fi
 
-BUILD_DIR="${BUILD_DIR:-$HOME/build/mscz-wasm${SUFFIX}}"
+BUILD_DIR="${BUILD_DIR:-$HOME/build/mscz-webviewer${SUFFIX}}"
 LOG="${BUILD_DIR}.log"
 
 if [ "${1:-}" = "--errors" ]; then
@@ -57,17 +57,18 @@ if [ "${1:-}" = "--errors" ]; then
     exit 0
 fi
 
-if [ ! -f "${BUILD_DIR}/CMakeCache.txt" ]; then
+{
     # emcmake puts the emscripten toolchain file in place; everything else is
     # the same configuration Phase 2 uses.
-    emcmake cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -G Ninja \
+    mise exec -- emcmake cmake -S "${REPO_DIR}" -B "${BUILD_DIR}" -G Ninja \
         -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
         -DMUSE_QT_SUPPORT=OFF \
+        -DMSCZ_PLAYBACK="${MSCZ_PLAYBACK:-EAS}" \
         ${MSCZ_CMAKE_EXTRA:-} \
         || exit 1
-fi
+}
 
-cmake --build "${BUILD_DIR}" -j "$(nproc)" -- -k 0 >"${LOG}" 2>&1
+mise exec -- cmake --build "${BUILD_DIR}" -j "${BUILD_JOBS:-$(nproc)}" -- -k 0 >"${LOG}" 2>&1
 build_status=$?
 
 failed=$(grep -acE '^FAILED:' "${LOG}")

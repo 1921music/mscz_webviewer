@@ -58,8 +58,26 @@
 <div id="drop">or drop a .mscz, .musicxml, .xml or .mxl here</div>
 <div id="pages"></div>
 
+<!-- PLAYBACK_BEGIN -->
+<section id="playback" aria-label="演奏" style="position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;padding:8px 16px;z-index:2">
+  <button id="play" type="button" disabled>再生</button>
+  <button id="stop" type="button" disabled>停止</button>
+  <output id="playbackTime">0:00 / 0:00</output>
+  <label>全体音量 <input id="masterVolume" type="range" min="0" max="100" value="80"></label>
+  <span id="playbackStatus" role="status"></span>
+  <details><summary>ミキサー</summary>
+    <div style="max-height:32vh;overflow:auto"><table><thead><tr><th>パート</th><th>音量</th><th>パン（左 ↔ 右）</th><th>ミュート</th><th>ソロ</th></tr></thead><tbody id="mixerRows"></tbody></table></div>
+  </details>
+</section>
+<style>#pages { padding-bottom:110px } #playback th { text-align:left; padding-right:12px } #playback input[type=range] { max-width:130px } #playback td { padding:3px 8px } </style>
+<!-- PLAYBACK_END -->
+
 <script type="module">
 import { load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED } from './mscz.js'
+// PLAYBACK_BEGIN
+import { attachPlayback } from './playback-ui.js'
+let playback
+// PLAYBACK_END
 
 const status = document.getElementById('status')
 const pages = document.getElementById('pages')
@@ -92,6 +110,9 @@ window.addEventListener('resize', updateZoom)
 updateZoom()
 
 function updateTransposeControls () {
+  // PLAYBACK_BEGIN
+  playback?.setBusy(busy)
+  // PLAYBACK_END
   const offset = score ? score.viewTransposeSemitones : 0
   document.getElementById('transposeValue').textContent = offset === 0 ? '原調' : `${offset > 0 ? '+' : ''}${offset} 半音`
   document.getElementById('transposeDown').disabled = !score || busy || offset <= -12
@@ -106,6 +127,9 @@ const t0 = performance.now()
 const textFonts = new URLSearchParams(location.search).get('textFonts') || 'browser'
 try {
   mscz = await load({ base: '.', textFonts })
+  // PLAYBACK_BEGIN
+  playback = attachPlayback(mscz, '@MSCZ_PLAYBACK@')
+  // PLAYBACK_END
   updateTransposeControls()
   status.textContent = `engine ready in ${Math.round(performance.now() - t0)} ms`
             + ` (${(mscz.resourceBytes / 1024).toFixed(0)} KB of resources)`
@@ -175,6 +199,9 @@ function render () {
 
 async function openFile (file) {
   if (!mscz || busy) { return }
+  // PLAYBACK_BEGIN
+  playback?.stop()
+  // PLAYBACK_END
   busy = true
   updateTransposeControls()
   status.textContent = `opening ${file.name}…`
@@ -189,16 +216,28 @@ async function openFile (file) {
 }
 
 function adoptScore (next) {
+  // PLAYBACK_BEGIN
+  playback?.setScore(null)
+  // PLAYBACK_END
   if (score) { score.close() }
   score = next
+  // PLAYBACK_BEGIN
+  playback?.setScore(score)
+  // PLAYBACK_END
   drop.hidden = true
   window.__mscz = { mscz, score }
+  // PLAYBACK_BEGIN
+  window.__mscz.playback = playback.player
+  // PLAYBACK_END
   render()
   updateTransposeControls()
 }
 
 async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) {
   if (!score || busy) { return }
+  // PLAYBACK_BEGIN
+  playback?.stop()
+  // PLAYBACK_END
   busy = true
   updateTransposeControls()
   status.textContent = '移調中…'
@@ -206,6 +245,9 @@ async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) 
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
   try {
     score.setViewTransposeSemitones(semitones, spelling)
+    // PLAYBACK_BEGIN
+    playback?.setScore(score, true)
+    // PLAYBACK_END
     render()
   } catch (e) {
     status.textContent = `移調できません: ${e.message}`
