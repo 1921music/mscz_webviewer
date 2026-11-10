@@ -13,7 +13,7 @@ export class Playback {
   get tracking () {
     return this.state === 'playing' || this.state === 'paused'
       ? playbackPosition(this.timeline, this.position)
-      : { time: 0, noteIds: [], system: null }
+      : { time: 0, noteIds: [], system: null, cursor: null }
   }
   setScore (score, preserve = false) {
     this.disposeWorker()
@@ -156,7 +156,7 @@ export class Playback {
 // IDs are valid for the current score session/layout only.
 const trackingIndexes = new WeakMap()
 export function playbackPosition (timeline, time) {
-  if (!timeline?.visual) return { time, noteIds: [], system: null }
+  if (!timeline?.visual) return { time, noteIds: [], system: null, cursor: null }
   let index = trackingIndexes.get(timeline)
   if (!index) {
     const notes = [...timeline.visual.notes].sort((a, b) => a.start - b.start)
@@ -175,7 +175,17 @@ export function playbackPosition (timeline, time) {
     if (index.notes[i].end > time) ids.add(index.notes[i].id)
   }
   const system = index.systems[upper(index.systems)]
-  return { time, noteIds: [...ids], system: system && time < system.end ? system : null }
+  const current = system && time < system.end ? system : null
+  let cursor = null
+  if (current?.anchors?.length) {
+    const points = current.anchors
+    let lo = 0, hi = points.length
+    while (lo < hi) { const mid = (lo + hi) >>> 1; if (points[mid][0] <= time) lo = mid + 1; else hi = mid }
+    const a = points[Math.max(0, lo - 1)], b = points[Math.min(lo, points.length - 1)]
+    const fraction = b[0] > a[0] ? Math.max(0, Math.min(1, (time - a[0]) / (b[0] - a[0]))) : 0
+    cursor = { page: current.page, x: a[1] + fraction * (b[1] - a[1]), y: current.bounds[1], height: current.bounds[3] }
+  }
+  return { time, noteIds: [...ids], system: current, cursor }
 }
 
 // Optional SVG adapter. Hosts own page mounting and scrolling via onSystem;
@@ -188,8 +198,12 @@ export class PlaybackView {
     this.update()
   }
   update () {
+    if (this.destroyed) return
     const tracking = this.player.tracking, active = new Set(tracking.noteIds)
+    let pageIndex = 0
     for (const svg of this.getPages()) {
+      const page = Number(svg?.dataset.playbackPage ?? pageIndex)
+      ++pageIndex
       if (!svg) continue
       let entry = this.pages.get(svg)
       if (!entry) {
@@ -202,11 +216,25 @@ export class PlaybackView {
           if (!groups.has(id)) groups.set(id, [])
           groups.get(id).push(group)
         }
-        entry = { groups, active: new Set() }; this.pages.set(svg, entry)
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+        line.dataset.playbackCursor = ''; line.setAttribute('aria-hidden', 'true')
+        line.setAttribute('stroke', '#d00000'); line.setAttribute('stroke-width', '2')
+        line.setAttribute('vector-effect', 'non-scaling-stroke'); line.style.pointerEvents = 'none'
+        svg.append(line)
+        entry = { groups, line, active: new Set() }; this.pages.set(svg, entry)
       }
       for (const id of entry.active) if (!active.has(id)) entry.groups.get(id)?.forEach(g => g.classList.remove('mscz-playing'))
       for (const id of active) if (!entry.active.has(id)) entry.groups.get(id)?.forEach(g => g.classList.add('mscz-playing'))
       entry.active = active
+      const cursor = tracking.cursor
+      const visible = cursor && cursor.page === page
+      entry.line.style.display = visible ? '' : 'none'
+      if (visible) {
+        const box = svg.viewBox.baseVal
+        const x = box.x + cursor.x * box.width, y = box.y + cursor.y * box.height
+        entry.line.setAttribute('x1', x); entry.line.setAttribute('x2', x)
+        entry.line.setAttribute('y1', y); entry.line.setAttribute('y2', y + cursor.height * box.height)
+      }
     }
     const system = tracking.system
     const key = system ? `${system.page}:${system.id}` : null
@@ -214,13 +242,22 @@ export class PlaybackView {
       this.systemKey = key
       if (system) this.onSystem(system)
     } else if (!system) this.systemKey = null
+    // Follow the audio clock at display refresh rate, independently of worker
+    // buffering and the coarser transport/mixer notifications.
+    if (this.player.state === 'playing' && this.frame == null) {
+      this.frame = requestAnimationFrame(() => { this.frame = null; this.update() })
+    } else if (this.player.state !== 'playing' && this.frame != null) {
+      cancelAnimationFrame(this.frame); this.frame = null
+    }
   }
   resetFollow () { this.systemKey = null; this.update() }
   destroy () {
+    this.destroyed = true
+    if (this.frame != null) cancelAnimationFrame(this.frame)
     this.unsubscribe()
     for (const svg of this.getPages()) {
       svg?.querySelectorAll('.mscz-playing').forEach(g => g.classList.remove('mscz-playing'))
-      svg?.querySelectorAll('[data-playback-style]').forEach(g => g.remove())
+      svg?.querySelectorAll('[data-playback-style],[data-playback-cursor]').forEach(g => g.remove())
     }
   }
 }

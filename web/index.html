@@ -203,7 +203,9 @@ function render () {
     // Parsed rather than assigned, so each page is a real SVG document
     // element and the text in it stays selectable.
     const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
-    pages.append(isolatePage(document.importNode(doc.documentElement, true)))
+    const element = isolatePage(document.importNode(doc.documentElement, true))
+    element.dataset.playbackPage = i
+    pages.append(element)
   }
 
   // PLAYBACK_BEGIN

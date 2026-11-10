@@ -51,6 +51,16 @@ for (const standalone of [false, true]) {
       expect(notes.length).toBe(8) // tied continuation is not re-struck; repeat is expanded
       expect(notes[0][3]).toBe(60)
       expect(notes[4][0]).toBeCloseTo(6, 1)
+      const continuity = await page.evaluate(() => {
+        const p = window.__mscz.playback
+        p.context = { currentTime: 1.9999 }; p.startTime = 0; p.state = 'paused'
+        const left = p.tracking.cursor.x
+        p.context.currentTime = 2.0001
+        const right = p.tracking.cursor.x
+        p.stop(); p.context = null
+        return Math.abs(right - left)
+      })
+      expect(continuity).toBeLessThan(0.001) // no jump over a barline in the same system
       // Stop must cancel a pending AudioContext resume before it creates a worker.
       expect(await page.evaluate(async () => {
         const p = window.__mscz.playback
@@ -60,6 +70,17 @@ for (const standalone of [false, true]) {
       await page.locator('#play').click()
       await expect.poll(() => page.evaluate(() => ({ state: window.__mscz.playback.state, error: window.__mscz.playback.error })), { timeout: 30000 }).toEqual({ state: 'playing', error: '' })
       await expect.poll(() => page.locator('.mscz-playing').count()).toBeGreaterThan(0)
+      const motion = await page.evaluate(async () => {
+        const samples = []
+        for (let i = 0; i < 8; ++i) {
+          await new Promise(requestAnimationFrame)
+          const line = document.querySelector('[data-playback-cursor]')
+          samples.push(Number(line.getAttribute('x1')))
+        }
+        return samples
+      })
+      expect(new Set(motion).size).toBeGreaterThan(4) // advances every frame, not every note
+      expect(motion.at(-1)).toBeGreaterThan(motion[0])
       await page.screenshot({ path: path.join(root, 'build', `playback-${standalone ? 'offline' : 'http'}.png`) })
       await page.locator('#showPlayback').uncheck()
       await expect(page.locator('#playback')).toBeHidden()

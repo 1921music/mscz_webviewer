@@ -195,7 +195,51 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
                  << ",\"start\":" << seconds(start)
                  << ",\"end\":" << seconds(start + measure->ticks().ticks())
                  << ",\"bounds\":[" << pos.x() / rect.width() << ',' << pos.y() / rect.height()
-                 << ',' << box.width() / rect.width() << ',' << box.height() / rect.height() << "]}";
+                 << ',' << box.width() / rect.width() << ',' << box.height() / rect.height() << "],\"anchors\":[";
+            // Interpolate score-space positions, not note-on events. Include
+            // tempo boundaries so long notes and rests follow tempo changes.
+            std::vector<std::pair<int, double>> positions;
+            for (auto* segment = displayed->first(SegmentType::ChordRest); segment; segment = segment->next(SegmentType::ChordRest)) {
+                positions.emplace_back(segment->tick().ticks(), segment->pageX() / rect.width());
+            }
+            const int displayEnd = displayed->isMMRest() && displayed->mmRestLast()
+                ? displayed->mmRestLast()->endTick().ticks() : displayed->endTick().ticks();
+            double endX = (displayed->pagePos().x() + displayed->width()) / rect.width();
+            const auto* next = displayed->nextMeasure();
+            if (!displayed->isMMRest() && displayEnd < repeat->endTick() && next && next->system() == system) {
+                if (const auto* segment = next->first(SegmentType::ChordRest)) endX = segment->pageX() / rect.width();
+            }
+            positions.emplace_back(displayEnd, endX);
+            auto xAt = [&](int tick) {
+                auto right = std::upper_bound(positions.begin(), positions.end(), tick,
+                    [](int t, const auto& p) { return t < p.first; });
+                if (right == positions.begin()) return right->second;
+                const auto& left = *std::prev(right);
+                if (right == positions.end()) return left.second;
+                const double fraction = double(tick - left.first) / (right->first - left.first);
+                return left.second + fraction * (right->second - left.second);
+            };
+            const int scoreStart = measure->tick().ticks(), scoreEnd = measure->endTick().ticks();
+            std::map<int, double> anchors;
+            anchors[scoreStart] = xAt(scoreStart);
+            anchors[scoreEnd] = xAt(scoreEnd);
+            for (const auto& p : positions) if (p.first > scoreStart && p.first < scoreEnd) anchors[p.first] = p.second;
+            for (auto t = score->tempomap()->lower_bound(scoreStart); t != score->tempomap()->end() && t->first <= scoreEnd; ++t)
+                anchors[t->first] = xAt(t->first);
+            bool firstAnchor = true;
+            auto point = [&](double time, double x) {
+                if (!firstAnchor) json << ',';
+                firstAnchor = false;
+                json << '[' << time << ',' << x << ']';
+            };
+            for (const auto& anchor : anchors) {
+                const double time = seconds(repeat->utick + anchor.first - repeat->tick);
+                const double pause = score->tempomap()->pauseSecs(anchor.first);
+                // Reach a pause's position before its silent hold, then stay there.
+                if (pause > 0 && anchor.first > scoreStart) point(time - pause, anchor.second);
+                point(time, anchor.second);
+            }
+            json << "]}";
         }
     }
     json << "]}}"; out = json.str(); return true;

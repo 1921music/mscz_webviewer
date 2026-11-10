@@ -242,3 +242,14 @@ PlaybackView uses a temporary CSS class; source colors, annotations and exports
 are unchanged. Pausing retains the current highlight. Auto-scroll is optional
 in both the standalone viewer and Rostrum. The tracking API has no annotation
 visibility side effects and does not call `rostrumInfo()`.
+
+The current system's `anchors` are `[playbackSeconds, pageXFraction]` pairs.
+`playbackPosition()` and `player.tracking` also return `cursor` (or `null`), with
+`{ page, x, y, height }` in page fractions. The cursor interpolates continuously
+between engraving positions, including rests and tempo boundaries; pauses hold
+its position. Repeats and page/system changes jump to the new score position.
+`PlaybackView` draws a red, system-height SVG line at display refresh rate using
+the audio clock, while preserving red noteheads. Pause holds both; stop hides both.
+Hosts supplying a subset of mounted SVG pages must set `svg.dataset.playbackPage`
+to the zero-based source page index. Cursor elements are transient overlays and
+are removed by `destroy()`; they are never added to score files or export SVGs.
