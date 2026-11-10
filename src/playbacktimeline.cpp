@@ -44,6 +44,12 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
     // segments' utick/utime fields. Do this before the MIDI renderer uses them.
     score->repeatList();
     score->updateRepeatListTempo();
+    std::map<const RepeatSegment*, int> visits;
+    int visit = 0, previousEnd = -1;
+    for (const auto* repeat : score->repeatList()) {
+        if (repeat->tick < previousEnd) ++visit;
+        visits[repeat] = visit; previousEnd = repeat->endTick();
+    }
     EventsHolder events;
     CompatMidiRendererInternal::Context context;
     context.applyCaesuras = true;
@@ -144,7 +150,7 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
                     if (!first) json << ',';
                     first = false;
                     json << "{\"id\":\"note_" << reinterpret_cast<uintptr_t>(note)
-                         << "\",\"start\":" << seconds(start) << ",\"end\":" << seconds(end) << '}';
+                         << "\",\"visit\":" << visits[repeat] << ",\"start\":" << seconds(start) << ",\"end\":" << seconds(end) << '}';
                 }
             }
         }
@@ -192,7 +198,7 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
             first = false;
             json << "{\"id\":\"system_" << reinterpret_cast<uintptr_t>(system)
                  << "\",\"page\":" << (it - score->pages().begin())
-                 << ",\"start\":" << seconds(start)
+                 << ",\"visit\":" << visits[repeat] << ",\"start\":" << seconds(start)
                  << ",\"end\":" << seconds(start + measure->ticks().ticks())
                  << ",\"bounds\":[" << pos.x() / rect.width() << ',' << pos.y() / rect.height()
                  << ',' << box.width() / rect.width() << ',' << box.height() / rect.height() << "],\"anchors\":[";

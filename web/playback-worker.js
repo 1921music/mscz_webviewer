@@ -25,6 +25,18 @@ function reset () {
   }
   applyMixer()
 }
+function seek (position) {
+  reset()
+  position = Math.max(0, Math.min(timeline.duration, Number(position) || 0))
+  // Restore programs, controllers and pitch bend, but never old note voices.
+  // Events exactly at the destination remain queued and will sound on resume.
+  while (eventIndex < timeline.events.length && timeline.events[eventIndex][0] < position) {
+    const [, p, status, a, b] = timeline.events[eventIndex++]
+    if ((status & 0xf0) !== 0x80 && (status & 0xf0) !== 0x90) sendEvent(p, status, a, b)
+  }
+  applyMixer()
+  frame = Math.round(position * rate)
+}
 function applyMixer () {
   timeline.parts.forEach((part, p) => {
     for (const [ch] of part.channels) {
@@ -76,8 +88,9 @@ self.onmessage = async ({ data: { id, action, args } }) => {
       }
       timeline = args.timeline
       mixer = args.mixer
-      reset()
+      seek(args.position || 0)
     } else if (action === 'reset') reset()
+    else if (action === 'seek') seek(args)
     else if (action === 'mix') { mixer = args; applyMixer() }
     else if (action === 'render') result = render(32)
     else throw new Error('Unknown playback request')

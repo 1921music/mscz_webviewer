@@ -126,7 +126,7 @@ for (const standalone of [false, true]) {
       expect(pcm.instruments).toBeGreaterThan(0)
       expect(pcm.muted).toBe(0); expect(pcm.soloMuted).toBe(0); expect(pcm.zeroVolume).toBe(0)
       expect(pcm.leftEnergy).toBeGreaterThan(pcm.rightEnergy * 10)
-      await page.locator('details summary').first().click()
+      await page.locator('#showMixer').click()
       await page.locator('[data-part="0"][data-control="solo"]').check()
       await page.locator('[data-part="1"][data-control="solo"]').check()
       await page.locator('[data-part="2"][data-control="solo"]').check()

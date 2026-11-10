@@ -62,17 +62,35 @@
 <div id="pages"></div>
 
 <!-- PLAYBACK_BEGIN -->
-<section id="playback" aria-label="Playback" style="position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;padding:8px 16px;z-index:2">
-  <button id="play" type="button" disabled>Play</button>
+<section id="playback" aria-label="Playback">
+  <div class="playback-transport"><button id="play" type="button" disabled>Play</button>
   <button id="stop" type="button" disabled>Stop</button>
-  <output id="playbackTime">0:00 / 0:00</output>
-  <label>Master volume <input id="masterVolume" type="range" min="0" max="100" value="80"></label>
-  <span id="playbackStatus" role="status"></span>
-  <details><summary>Mixer</summary>
-    <div style="max-height:32vh;overflow:auto"><table><thead><tr><th>Part</th><th>Volume</th><th>Pan (L ↔ R)</th><th>Mute</th><th>Solo</th></tr></thead><tbody id="mixerRows"></tbody></table></div>
-  </details>
+  <label><input id="followPlayback" type="checkbox" checked> Auto-scroll</label>
+  <button id="showMixer" type="button" aria-controls="mixerDialog" aria-expanded="false">Mixer</button>
+  <span id="playbackStatus" role="status"></span></div>
+  <div class="playback-position"><label>Master volume <input id="masterVolume" type="range" min="0" max="100" value="80"></label>
+  <div class="playback-seek"><button id="rewind" type="button" aria-label="Go to beginning" disabled>|&lt;</button>
+  <input id="seek" type="range" min="0" max="0" step="0.001" value="0" aria-label="Playback position" disabled>
+  <output id="playbackTime">0:00 / 0:00</output></div></div>
 </section>
-<style>#pages { padding-bottom:var(--playback-padding, 110px) } #playback th { text-align:left; padding-right:12px } #playback input[type=range] { max-width:130px } #playback td { padding:3px 8px } </style>
+<dialog id="mixerDialog" aria-label="Mixer"><div class="mixer-heading">Mixer <button id="closeMixer" type="button" aria-label="Close mixer">×</button></div>
+<div style="max-height:45vh;overflow:auto"><table><thead><tr><th>Part</th><th>Volume</th><th>Pan (L ↔ R)</th><th>Mute</th><th>Solo</th></tr></thead><tbody id="mixerRows"></tbody></table></div></dialog>
+<style>
+#pages { padding-bottom:var(--playback-padding, 110px) }
+#playback { position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;padding:8px 16px;z-index:2 }
+.playback-transport,.playback-position { display:flex;align-items:center;gap:12px;flex-wrap:wrap }
+.playback-position { margin-top:6px }
+.playback-seek { display:flex;align-items:center;gap:8px;flex:1 1 24rem;max-width:66vw;min-width:0 }
+#seek { flex:1;min-width:0;width:100% }
+#playbackTime { white-space:nowrap;font-variant-numeric:tabular-nums }
+#masterVolume { max-width:130px;min-width:60px }
+#playback button { min-height:32px }
+#mixerDialog { position:fixed;top:auto;bottom:100px;left:auto;right:16px;margin:0;max-width:calc(100vw - 48px);border:1px solid #bbb;border-radius:8px;z-index:10;background:white }
+.mixer-heading { display:flex;justify-content:space-between;align-items:center;margin-bottom:8px }
+#mixerDialog th { text-align:left;padding-right:12px } #mixerDialog td { padding:3px 8px }
+#mixerDialog input[type=range] { width:110px;max-width:20vw }
+@media(max-width:760px) { #playback { padding:8px } .playback-seek { flex-basis:100%;max-width:none } }
+</style>
 <!-- PLAYBACK_END -->
 
 <script type="module">
@@ -89,6 +107,10 @@ const drop = document.getElementById('drop')
 const showPlayback = document.getElementById('showPlayback')
 showPlayback.addEventListener('change', () => {
   document.getElementById('playback').hidden = !showPlayback.checked
+  if (!showPlayback.checked) {
+    document.getElementById('mixerDialog').close()
+    document.getElementById('showMixer').setAttribute('aria-expanded', 'false')
+  }
   pages.style.setProperty('--playback-padding', showPlayback.checked ? '110px' : '16px')
 })
 // PLAYBACK_END

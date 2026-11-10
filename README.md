@@ -58,7 +58,7 @@ instrument parts. Each chord row has independent volume, pan, mute and solo;
 its initial instrument and levels come from the score's harmony channel.
 
 This is GM playback, not Muse Sounds or a full desktop mixer. The backends may
-sound different; reverb/chorus, runtime instrument editing, seeking and persistent
+sound different; reverb/chorus, runtime instrument editing and persistent
 mixer presets are not implemented. Audio is synthesized in a worker, in short
 buffers rather than allocating an entire song's PCM. Pause preserves both the
 playback position and sustained voices. Very large scores can underrun on slow
@@ -253,3 +253,30 @@ the audio clock, while preserving red noteheads. Pause holds both; stop hides bo
 Hosts supplying a subset of mounted SVG pages must set `svg.dataset.playbackPage`
 to the zero-based source page index. Cursor elements are transient overlays and
 are removed by `destroy()`; they are never added to score files or export SVGs.
+
+### Paused seeking
+
+The footer always shows `|<`, the full-song seek slider and the clock to the
+right of Master volume. The slider and beginning button are enabled only while
+paused. Tapping a notehead while paused seeks to that note, preserving the
+current repeat visit where possible. Playing never seeks on note taps. Mixer
+opens a nonmodal dialog, initially closed.
+
+Shared Playback APIs:
+
+- `cue(seconds = 0)` activates a stopped score at a silent paused position,
+  without requesting host scrolling. It also works while paused.
+- `seek(seconds)` returns false unless paused, clamps to `[0, duration]`, clears
+  queued audio and voices, updates tracking synchronously and remains paused.
+- `seekNote(noteId)` selects the note's start in the current repeat `visit`,
+  falling back to the nearest occurrence if absent from that visit.
+- `PlaybackView.noteAt(clientX, clientY, svg)` hit-tests noteheads with a small
+  touch margin and returns an ID while paused. Hosts decide how to consume taps.
+- `onSystem(system, { seeking })` is also called on explicit seeks while paused;
+  hosts should reveal the destination even when automatic following is disabled.
+
+Seeking reconstructs instrument/controller/pitch-bend state lazily on Play,
+without replaying earlier note attacks or sustained voices. Attacks exactly at
+the chosen timestamp remain queued. Ordinary pause/resume without seeking still
+preserves buffered audio and held voices. Position, highlights, cursor and seeks
+are presentation state, never score edits.

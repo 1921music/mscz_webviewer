@@ -1,0 +1,65 @@
+const { test, expect } = require('@playwright/test')
+const fs = require('node:fs'), path = require('node:path')
+const { pathToFileURL } = require('node:url')
+const root = path.resolve(__dirname, '../..'), web = path.resolve(process.env.MSCZ_WEB_DIR || 'build/web')
+for (const standalone of [false, true]) test(`paused seeking and silent voice restoration: ${standalone ? 'offline' : 'HTTP'}`, async ({ page, context }, testInfo) => {
+  test.skip(process.env.MSCZ_PLAYBACK === 'OFF')
+  const external = [], errors = []
+  page.on('pageerror', e => errors.push(e.message))
+  await context.route('**/*', route => {
+    const u=route.request().url()
+    if (/^(data:|blob:|file:)/.test(u) || (!standalone && u.startsWith('http://127.0.0.1:8766/'))) return route.continue()
+    external.push(u); return route.abort()
+  })
+  let url='http://127.0.0.1:8766/'
+  if(standalone) {
+    const file=testInfo.outputPath('offline/index.html');fs.mkdirSync(path.dirname(file),{recursive:true})
+    fs.copyFileSync(path.join(web,'index-standalone.html'),file);url=pathToFileURL(file).href;await context.setOffline(true)
+  }
+  await page.goto(url); await expect(page.locator('#file')).toBeEnabled({timeout:45000})
+  const xml=fs.readFileSync(path.join(root,'test/playback.musicxml'),'utf8').replaceAll('<measure number="2">','<measure number="2"><print new-page="yes"/>')
+  await page.locator('#file').setInputFiles({name:'seek.musicxml',mimeType:'application/xml',buffer:Buffer.from(xml)})
+  await expect(page.locator('#play')).toBeEnabled()
+  await expect(page.locator('#seek')).toBeVisible();await expect(page.locator('#seek')).toBeDisabled()
+  await expect(page.locator('#mixerDialog')).not.toBeVisible()
+  await page.locator('#showMixer').click();expect(await page.locator('#mixerDialog').evaluate(n=>n.matches(':modal'))).toBe(false)
+  await page.locator('#closeMixer').click()
+  await page.locator('#showMixer').click();await page.locator('#showPlayback').uncheck()
+  await expect(page.locator('#mixerDialog')).not.toBeVisible()
+  await page.locator('#showPlayback').check()
+  await page.locator('#play').click();await expect(page.locator('#play')).toHaveText('Pause')
+  expect(await page.evaluate(()=>window.__mscz.playback.seek(8))).toBe(false)
+  await expect(page.locator('#rewind')).toBeDisabled()
+  await page.locator('#play').click();await expect(page.locator('#seek')).toBeEnabled()
+  await page.locator('#followPlayback').uncheck()
+  const sliderBox=await page.locator('#seek').boundingBox()
+  await page.mouse.move(sliderBox.x+8,sliderBox.y+sliderBox.height/2);await page.mouse.down()
+  await page.mouse.move(sliderBox.x+sliderBox.width*.25,sliderBox.y+sliderBox.height/2,{steps:6});await page.mouse.up()
+  expect(await page.evaluate(()=>window.__mscz.playback.position)).toBeGreaterThan(2.5)
+  expect(await page.evaluate(()=>window.__mscz.playback.position)).toBeLessThan(3.5)
+  await page.locator('#seek').evaluate(n=>{n.value='3';n.dispatchEvent(new Event('input',{bubbles:true}))})
+  await expect.poll(()=>page.evaluate(()=>window.__mscz.playback.position)).toBe(3)
+  await expect.poll(()=>page.evaluate(()=>scrollY)).toBeGreaterThan(0)
+  await page.locator('#rewind').click();expect(await page.evaluate(()=>window.__mscz.playback.position)).toBe(0)
+  const repeated=await page.evaluate(()=>{
+    const p=window.__mscz.playback,id=p.timeline.visual.notes.find(n=>n.start===0).id
+    p.seek(5.8);p.seekNote(id);const first=p.position
+    p.seek(11.8);p.seekNote(id);return {first,second:p.position}
+  });expect(repeated).toEqual({first:0,second:6})
+  await page.locator('#rewind').click()
+  const note=await page.evaluate(()=>window.__mscz.playback.timeline.visual.notes.find(n=>n.start===0.5&&n.visit===0))
+  const head=page.locator(`[data-note-id="${note.id}"]`).first()
+  await head.click();expect(await page.evaluate(()=>window.__mscz.playback.position)).toBe(0.5)
+  await expect(page.locator('#play')).toHaveText('Play')
+  const pcm=await page.evaluate(async()=>{
+    const p=window.__mscz.playback, energy=c=>c.left.reduce((a,b)=>a+b*b,0)+c.right.reduce((a,b)=>a+b*b,0)
+    p.seek(2.5);await p.ensureWorker();const silent=energy(await p.request('render'))
+    await p.request('seek',1.5);const attack=energy(await p.request('render'))
+    p.seek(1.2);return {silent,attack}
+  });expect(pcm.silent).toBe(0);expect(pcm.attack).toBeGreaterThan(0)
+  await page.locator('#play').click();await expect(page.locator('#play')).toHaveText('Pause')
+  await expect.poll(()=>page.evaluate(()=>window.__mscz.playback.position)).toBeGreaterThan(1.2)
+  await page.locator('#play').click();await page.locator('#stop').click()
+  await expect(page.locator('#seek')).toBeVisible();await expect(page.locator('#seek')).toBeDisabled()
+  expect(errors).toEqual([]);expect(external).toEqual([])
+})

@@ -15,6 +15,32 @@ export class Playback {
       ? playbackPosition(this.timeline, this.position)
       : { time: 0, noteIds: [], system: null, cursor: null }
   }
+  // Seeking is synchronous and silent; synthesis is recreated lazily on Play.
+  cue (time = 0) {
+    if (!this.timeline) return false
+    if (this.state === 'stopped') this.state = 'paused'
+    return this.seek(time, { follow: false })
+  }
+  seek (time, { follow = true } = {}) {
+    if (!this.timeline || this.state !== 'paused') return false
+    if (!Number.isFinite(time)) throw new RangeError('Invalid playback position')
+    const position = Math.max(0, Math.min(this.timeline.duration, time))
+    this.disposeWorker()
+    this.pausedPosition = position; this.state = 'paused'; this.error = ''
+    if (follow) this.seekSerial = (this.seekSerial || 0) + 1
+    this.notify()
+    return true
+  }
+  seekNote (id) {
+    if (this.state !== 'paused') return false
+    const notes = this.timeline?.visual?.notes.filter(n => n.id === id) || []
+    const visit = this.tracking.system?.visit
+    const sameVisit = notes.filter(n => visit != null && n.visit === visit)
+    const candidates = sameVisit.length ? sameVisit : notes
+    if (!candidates.length) return false
+    const position = this.position
+    return this.seek(candidates.reduce((a, b) => Math.abs(a.start - position) <= Math.abs(b.start - position) ? a : b).start)
+  }
   setScore (score, preserve = false) {
     this.disposeWorker()
     const previous = this.mixer
@@ -56,7 +82,7 @@ export class Playback {
       else call.resolve(data.result)
     }
     this.worker.onerror = e => this.fail(new Error(e.message || 'Audio worker failed'))
-    await this.request('init', { wasm, font, timeline: this.timeline, mixer: this.mixer })
+    await this.request('init', { wasm, font, timeline: this.timeline, mixer: this.mixer, position: this.pausedPosition || 0 })
     if (epoch === this.epoch) await this.request('mix', this.mixer)
   }
   async play () {
@@ -69,7 +95,8 @@ export class Playback {
       this.gain.connect(this.context.destination)
     }
     const resumed = this.context.resume()
-    const paused = this.state === 'paused'
+    const buffered = this.state === 'paused' && !!this.worker && this.startTime != null
+    const position = this.position
     const epoch = this.epoch
     this.error = ''
     this.state = 'loading'; this.notify()
@@ -78,7 +105,7 @@ export class Playback {
       if (epoch !== this.epoch) return
       await this.ensureWorker()
       if (epoch !== this.epoch) return
-      if (!paused) { this.nextTime = this.context.currentTime + 0.06; this.startTime = this.nextTime; this.done = false }
+      if (!buffered) { this.nextTime = this.context.currentTime + 0.06; this.startTime = this.nextTime - position; this.pausedPosition = 0; this.done = false }
       this.state = 'playing'; this.notify()
       this.timer = setInterval(() => this.pump(), 40)
       this.pump()
@@ -134,7 +161,7 @@ export class Playback {
     this.workerURL = null
     for (const call of this.pending.values()) call.reject(new Error('Playback cancelled'))
     this.pending.clear()
-    this.state = 'stopped'; this.rendering = false; this.startTime = null
+    this.state = 'stopped'; this.rendering = false; this.startTime = null; this.pausedPosition = 0
   }
   setMixer (index, patch) {
     const p = this.mixer[index]
@@ -148,7 +175,7 @@ export class Playback {
     this.volume = Math.max(0, Math.min(1, value))
     if (this.gain) this.gain.gain.setValueAtTime(this.volume, this.context.currentTime)
   }
-  get position () { return this.startTime == null ? 0 : Math.max(0, Math.min(this.timeline.duration, this.context.currentTime - this.startTime)) }
+  get position () { return this.startTime == null ? (this.pausedPosition || 0) : Math.max(0, Math.min(this.timeline.duration, this.context.currentTime - this.startTime)) }
   fail (error) { this.stop(); this.error = error.message; this.notify() }
 }
 
@@ -175,7 +202,7 @@ export function playbackPosition (timeline, time) {
     if (index.notes[i].end > time) ids.add(index.notes[i].id)
   }
   const system = index.systems[upper(index.systems)]
-  const current = system && time < system.end ? system : null
+  const current = system && (time < system.end || (time === timeline.duration && time === system.end)) ? system : null
   let cursor = null
   if (current?.anchors?.length) {
     const points = current.anchors
@@ -193,7 +220,7 @@ export function playbackPosition (timeline, time) {
 export class PlaybackView {
   constructor (player, { getPages, onSystem = () => {} }) {
     this.player = player; this.getPages = getPages; this.onSystem = onSystem
-    this.pages = new WeakMap(); this.systemKey = null
+    this.pages = new WeakMap(); this.systemKey = null; this.seekSerial = player.seekSerial
     this.unsubscribe = player.subscribe(() => this.update())
     this.update()
   }
@@ -238,9 +265,11 @@ export class PlaybackView {
     }
     const system = tracking.system
     const key = system ? `${system.page}:${system.id}` : null
-    if (this.player.state === 'playing' && key !== this.systemKey) {
+    const seeking = this.seekSerial !== this.player.seekSerial
+    this.seekSerial = this.player.seekSerial
+    if ((this.player.state === 'playing' && key !== this.systemKey) || seeking) {
       this.systemKey = key
-      if (system) this.onSystem(system)
+      if (system) this.onSystem(system, { seeking })
     } else if (!system) this.systemKey = null
     // Follow the audio clock at display refresh rate, independently of worker
     // buffering and the coarser transport/mixer notifications.
@@ -249,6 +278,17 @@ export class PlaybackView {
     } else if (this.player.state !== 'playing' && this.frame != null) {
       cancelAnimationFrame(this.frame); this.frame = null
     }
+  }
+  noteAt (clientX, clientY, svg) {
+    if (this.player.state !== 'paused' || !svg) return null
+    let hit = null, distance = Infinity
+    for (const group of svg.querySelectorAll('[data-note-id]')) {
+      const r = group.getBoundingClientRect()
+      if (!r.width || !r.height || clientX < r.left - 6 || clientX > r.right + 6 || clientY < r.top - 6 || clientY > r.bottom + 6) continue
+      const d = Math.hypot(clientX - (r.left + r.width / 2), clientY - (r.top + r.height / 2))
+      if (d < distance) { distance = d; hit = group.dataset.noteId }
+    }
+    return hit
   }
   resetFollow () { this.systemKey = null; this.update() }
   destroy () {
