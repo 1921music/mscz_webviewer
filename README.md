@@ -254,24 +254,33 @@ Hosts supplying a subset of mounted SVG pages must set `svg.dataset.playbackPage
 to the zero-based source page index. Cursor elements are transient overlays and
 are removed by `destroy()`; they are never added to score files or export SVGs.
 
-### Paused seeking
+### State-preserving seeking
 
 The footer always shows `|<`, the full-song seek slider and the clock to the
-right of Master volume. The slider and beginning button are enabled only while
-paused. Tapping a notehead while paused seeks to that note, preserving the
-current repeat visit where possible. Playing never seeks on note taps. Mixer
+right of Volume. The slider, beginning button and notehead taps work while
+playing or paused and retain the previous transport state. Dragging previews
+silently until release; a playing gesture resumes automatically, while a paused
+gesture stays paused. Note taps commit on release and ignore moved pointers.
+Repeat visits are preserved where possible. Mixer
 opens a nonmodal dialog, initially closed.
 
 Shared Playback APIs:
 
 - `cue(seconds = 0)` activates a stopped score at a silent paused position,
   without requesting host scrolling. It also works while paused.
-- `seek(seconds)` returns false unless paused, clamps to `[0, duration]`, clears
-  queued audio and voices, updates tracking synchronously and remains paused.
+- `seek(seconds)` returns false outside an active transport, clamps to
+  `[0, duration]`, clears queued audio/voices and updates tracking immediately.
+  It resumes asynchronously if previously playing (including a pending resume).
+- `canSeek` reports whether playback controls are active.
+- `beginScrub()` / `endScrub({ cancel })` hold a silent preview and restore the
+  previous transport state on release. Cancellation restores the original time;
+  Stop/score changes invalidate pending resumes.
 - `seekNote(noteId)` selects the note's start in the current repeat `visit`,
   falling back to the nearest occurrence if absent from that visit.
 - `PlaybackView.noteAt(clientX, clientY, svg)` hit-tests noteheads with a small
-  touch margin and returns an ID while paused. Hosts decide how to consume taps.
+  touch margin and returns an ID during active playback. Hosts decide how to consume taps.
+- `PlaybackView.bindSeek(range, rewind)` binds pointer, keyboard and accessibility
+  input to the shared transport behavior and returns an unbind function.
 - `onSystem(system, { seeking })` is also called on explicit seeks while paused;
   hosts should reveal the destination even when automatic following is disabled.
 

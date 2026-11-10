@@ -11,28 +11,52 @@ export class Playback {
   subscribe (listener) { this.listeners.add(listener); return () => this.listeners.delete(listener) }
   notify () { this.changed(); for (const listener of this.listeners) listener(this.tracking) }
   get tracking () {
-    return this.state === 'playing' || this.state === 'paused'
+    return this.canSeek
       ? playbackPosition(this.timeline, this.position)
       : { time: 0, noteIds: [], system: null, cursor: null }
   }
-  // Seeking is synchronous and silent; synthesis is recreated lazily on Play.
+  get canSeek () { return !!this.timeline && ['playing', 'paused', 'loading'].includes(this.state) }
+  // Scrubbing holds a silent preview until release. Stop/score changes cancel
+  // the transaction, so a late pointerup can never restart playback.
+  beginScrub () {
+    if (!this.canSeek) return false
+    if (this.scrub) return true
+    const scrub = { resume: this.state !== 'paused', position: this.position }
+    this.disposeWorker()
+    this.scrub = scrub; this.pausedPosition = scrub.position; this.state = 'paused'
+    this.notify()
+    return true
+  }
+  endScrub ({ cancel = false } = {}) {
+    const scrub = this.scrub
+    if (!scrub) return false
+    if (cancel) this.seek(scrub.position)
+    this.scrub = null
+    if (scrub.resume && this.state === 'paused') void this.play()
+    else this.notify()
+    return true
+  }
+  // A direct seek preserves transport intent; old voices are not reconstructed.
   cue (time = 0) {
-    if (!this.timeline) return false
+    if (!this.timeline || !['stopped','paused'].includes(this.state)) return false
     if (this.state === 'stopped') this.state = 'paused'
     return this.seek(time, { follow: false })
   }
   seek (time, { follow = true } = {}) {
-    if (!this.timeline || this.state !== 'paused') return false
+    if (!this.canSeek) return false
     if (!Number.isFinite(time)) throw new RangeError('Invalid playback position')
     const position = Math.max(0, Math.min(this.timeline.duration, time))
+    const scrub = this.scrub, resume = !scrub && this.state !== 'paused'
     this.disposeWorker()
+    this.scrub = scrub
     this.pausedPosition = position; this.state = 'paused'; this.error = ''
     if (follow) this.seekSerial = (this.seekSerial || 0) + 1
     this.notify()
+    if (resume) void this.play()
     return true
   }
   seekNote (id) {
-    if (this.state !== 'paused') return false
+    if (!this.canSeek) return false
     const notes = this.timeline?.visual?.notes.filter(n => n.id === id) || []
     const visit = this.tracking.system?.visit
     const sameVisit = notes.filter(n => visit != null && n.visit === visit)
@@ -86,7 +110,7 @@ export class Playback {
     if (epoch === this.epoch) await this.request('mix', this.mixer)
   }
   async play () {
-    if (!this.timeline || this.state === 'playing' || this.state === 'loading') return
+    if (!this.timeline || this.scrub || this.state === 'playing' || this.state === 'loading') return
     // Create/resume inside the user's gesture, before awaiting resources.
     if (!this.context) {
       this.context = new AudioContext({ sampleRate: 44100 })
@@ -152,6 +176,7 @@ export class Playback {
     this.notify()
   }
   disposeWorker () {
+    this.scrub = null
     ++this.epoch
     clearInterval(this.timer)
     for (const source of this.sources) { source.stop(); source.disconnect() }
@@ -279,8 +304,33 @@ export class PlaybackView {
       cancelAnimationFrame(this.frame); this.frame = null
     }
   }
+  bindSeek (range, rewind) {
+    const controller = new AbortController(), options = { signal: controller.signal }
+    let pointer = null, keyboard = false
+    const finish = cancel => {
+      if (pointer == null && !keyboard) return
+      pointer = null; keyboard = false
+      this.player.endScrub({ cancel })
+    }
+    range.addEventListener('pointerdown', e => {
+      if (e.isPrimary && e.button === 0 && this.player.beginScrub()) pointer = e.pointerId
+    }, options)
+    document.addEventListener('pointerup', e => { if (pointer === e.pointerId) finish(!e.isTrusted) }, { ...options, capture: true })
+    document.addEventListener('pointercancel', e => { if (pointer === e.pointerId) finish(true) }, { ...options, capture: true })
+    window.addEventListener('blur', () => finish(true), options)
+    const keys = new Set(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'])
+    range.addEventListener('keydown', e => { if (keys.has(e.key) && this.player.beginScrub()) keyboard = true }, options)
+    range.addEventListener('keyup', e => { if (keys.has(e.key) && keyboard) finish(false) }, options)
+    range.addEventListener('blur', () => { if (keyboard) finish(false) }, options)
+    range.addEventListener('input', () => this.player.seek(Number(range.value)), options)
+    rewind.addEventListener('click', () => this.player.seek(0), options)
+    const unbind = () => { controller.abort(); finish(true); this.bindings?.delete(unbind) }
+    if (!this.bindings) this.bindings = new Set()
+    this.bindings.add(unbind)
+    return unbind
+  }
   noteAt (clientX, clientY, svg) {
-    if (this.player.state !== 'paused' || !svg) return null
+    if (!this.player.canSeek || !svg) return null
     let hit = null, distance = Infinity
     for (const group of svg.querySelectorAll('[data-note-id]')) {
       const r = group.getBoundingClientRect()
@@ -293,6 +343,7 @@ export class PlaybackView {
   resetFollow () { this.systemKey = null; this.update() }
   destroy () {
     this.destroyed = true
+    for (const unbind of [...(this.bindings || [])]) unbind()
     if (this.frame != null) cancelAnimationFrame(this.frame)
     this.unsubscribe()
     for (const svg of this.getPages()) {

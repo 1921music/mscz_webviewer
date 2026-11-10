@@ -8,12 +8,12 @@ export function attachPlayback (mscz, backend) {
   let busy = false
   const clock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
   const player = new Playback(mscz, backend, () => {
-    play.disabled = busy || !player.timeline || player.state === 'loading'
+    play.disabled = busy || !player.timeline || player.state === 'loading' || !!player.scrub
     stop.disabled = !player.timeline || player.state === 'stopped'
     play.textContent = player.state === 'playing' ? 'Pause' : player.state === 'loading' ? 'Loading…' : 'Play'
     root.querySelector('#playbackTime').textContent = `${clock(player.position)} / ${clock(player.timeline?.duration || 0)}`
     seek.max = player.timeline?.duration || 0; seek.value = player.position
-    seek.disabled = rewind.disabled = busy || player.state !== 'paused'
+    seek.disabled = rewind.disabled = busy || !player.canSeek
     message.textContent = player.error || ''
   })
   const follow = root.querySelector('#followPlayback')
@@ -37,8 +37,7 @@ export function attachPlayback (mscz, backend) {
   })
   panelSize.observe(root)
   follow.onchange = () => view.resetFollow()
-  seek.oninput = () => player.seek(Number(seek.value))
-  rewind.onclick = () => player.seek(0)
+  view.bindSeek(seek, rewind)
   const mixer = document.getElementById('mixerDialog'), mixerButton = root.querySelector('#showMixer')
   mixerButton.onclick = () => {
     if (mixer.open) mixer.close(); else mixer.show()
@@ -55,7 +54,10 @@ export function attachPlayback (mscz, backend) {
   document.addEventListener('pointerup', e => {
     if (!tap || tap.pointerId !== e.pointerId) return
     const down = tap; tap = null
-    if (Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8) player.seekNote(down.id)
+    if (!down.moved && Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8) player.seekNote(down.id)
+  })
+  document.addEventListener('pointermove', e => {
+    if (tap && tap.pointerId === e.pointerId && Math.hypot(e.clientX-tap.x,e.clientY-tap.y)>8) tap.moved = true
   })
   document.addEventListener('pointercancel', () => { tap = null })
   play.addEventListener('click', () => player.state === 'playing' ? player.pause().catch(e => player.fail(e)) : player.play())
