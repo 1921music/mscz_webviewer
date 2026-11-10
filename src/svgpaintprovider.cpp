@@ -153,7 +153,9 @@ void SvgPaintProvider::beginObject(const std::string& name)
     // Kept as a group so the output can be read against the score: the engine
     // names these after the element being drawn.
     closeStateGroup();
-    m_body << "<g data-object=\"" << name << "\">\n";
+    m_body << "<g data-object=\"" << name << "\"";
+    if (name.rfind("note_", 0) == 0) m_body << " data-note-id=\"" << name << "\"";
+    m_body << ">\n";
     ++m_openObjectGroups;
 }
 

@@ -211,3 +211,34 @@ The standalone viewer does not expose annotation editing or saving controls.
 Its existing open, zoom, transpose and optional playback behavior is unchanged.
 The browser suite covers both the viewer lifecycle and opt-in save/reopen across
 HTTP and offline standalone builds, including playback-disabled builds.
+
+### Playback tracking API
+
+`score.playbackTimeline()` also returns `visual: { version: 1, notes, systems }`.
+`notes` contains `{ id, start, end }` intervals in playback seconds, with repeats
+expanded. Intervals follow written note durations (including tied continuations),
+not reverb, pedal tails or articulation shortening. Grace notes use their actual
+MIDI renderer timing; zero-length renderer events are omitted. `systems` contains
+`{ id, page, start, end, bounds: [x, y, width, height] }`; `page` is zero-based
+and bounds are fractions of the page, independent of SVG DPI and host zoom.
+System intervals include rests. IDs are session-local and must be refreshed
+after replacing the score or changing its layout/transposition; never persist them.
+SVG notehead groups carry the matching `data-note-id` attribute.
+
+The exports in `web/playback.js` are reusable by embedded hosts:
+
+- `playbackPosition(timeline, seconds)` returns `{ time, noteIds, system }`.
+  Intervals include their start and exclude their end. It has no DOM or audio dependencies.
+- `player.tracking` returns the same snapshot, clearing it when stopped.
+- `player.subscribe(callback)` observes transport/position changes alongside the
+  existing constructor callback and returns an unsubscribe function.
+- `new PlaybackView(player, { getPages, onSystem })` colors the SVG noteheads
+  supplied by `getPages()` and calls `onSystem(system)` when the playing system
+  changes. The host owns scrolling and page mounting. Call `update()` after
+  rendering/mounting pages, `resetFollow()` to follow the current system again,
+  and `destroy()` to unsubscribe and remove highlighting.
+
+PlaybackView uses a temporary CSS class; source colors, annotations and exports
+are unchanged. Pausing retains the current highlight. Auto-scroll is optional
+in both the standalone viewer and Rostrum. The tracking API has no annotation
+visibility side effects and does not call `rostrumInfo()`.

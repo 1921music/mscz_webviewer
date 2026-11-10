@@ -22,6 +22,7 @@
 #include "paint.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "draw/painter.h"
 #include "dom/score.h"
@@ -229,7 +230,10 @@ void Paint::paintItem(Painter& painter, const EngravingItem* item, const PaintOp
     PointF itemPosition(item->pagePos());
 
     painter.translate(itemPosition);
+    // Session-local identity shared with the playback visual timeline.
+    if (item->isNote()) painter.beginObject("note_" + std::to_string(reinterpret_cast<uintptr_t>(item)));
     TDraw::drawItem(item, &painter, opt);
+    if (item->isNote()) painter.endObject();
     painter.translate(-itemPosition);
 }
 

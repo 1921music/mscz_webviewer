@@ -3,6 +3,7 @@
 #include "playbacktimeline.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <iomanip>
 #include <map>
 #include <sstream>
@@ -13,6 +14,12 @@
 #include "engraving/dom/instrument.h"
 #include "engraving/dom/repeatlist.h"
 #include "engraving/dom/tempo.h"
+#include "engraving/dom/segment.h"
+#include "engraving/dom/measure.h"
+#include "engraving/dom/system.h"
+#include "engraving/dom/page.h"
+#include "engraving/dom/chord.h"
+#include "engraving/dom/note.h"
 
 namespace mscz {
 namespace {
@@ -118,6 +125,79 @@ bool playbackTimeline(mu::engraving::MasterScore* score, std::string& out, std::
         first = false;
         json << '[' << e.time << ',' << e.part << ',' << (e.type | e.channel) << ',' << e.a << ',' << e.b << ']';
     }
-    json << "]}"; out = json.str(); return true;
+    // Display durations are notation durations, independent of articulation,
+    // sustain and MIDI note deduplication. A tied continuation gets its own
+    // interval, while rest-only measures still advance the system timeline.
+    json << "],\"visual\":{\"version\":1,\"notes\":[";
+    first = true;
+    for (const auto* repeat : score->repeatList()) {
+        for (auto* segment = score->firstSegment(SegmentType::ChordRest); segment; segment = segment->next1(SegmentType::ChordRest)) {
+            const int tick = segment->tick().ticks();
+            if (tick < repeat->tick || tick >= repeat->endTick()) continue;
+            for (auto* element : segment->elist()) {
+                if (!element || !element->isChord()) continue;
+                const auto* chord = toChord(element);
+                const int start = repeat->utick + tick - repeat->tick;
+                const int end = std::min(repeat->utick + repeat->len(), start + chord->actualTicks().ticks());
+                for (const auto* note : chord->notes()) {
+                    if (!note->play()) continue;
+                    if (!first) json << ',';
+                    first = false;
+                    json << "{\"id\":\"note_" << reinterpret_cast<uintptr_t>(note)
+                         << "\",\"start\":" << seconds(start) << ",\"end\":" << seconds(end) << '}';
+                }
+            }
+        }
+    }
+    // Grace chords have no written duration: retain their renderer timing.
+    for (size_t channelIndex = 0; channelIndex < events.size(); ++channelIndex) {
+        const auto& channelEvents = events[channelIndex];
+        std::map<const Note*, double> starts;
+        for (const auto& item : channelEvents) {
+            const auto& e = item.second;
+            const auto* note = e.note();
+            if (!note || !note->chord()->isGrace() || e.discard()) continue;
+            if (e.type() == ME_NOTEON && e.velo() > 0) starts[note] = seconds(item.first);
+            else if (e.type() == ME_NOTEOFF || (e.type() == ME_NOTEON && e.velo() == 0)) {
+                auto it = starts.find(note);
+                if (it == starts.end()) continue;
+                const double end = seconds(item.first);
+                if (end <= it->second) { starts.erase(it); continue; }
+                if (!first) json << ',';
+                first = false;
+                json << "{\"id\":\"note_" << reinterpret_cast<uintptr_t>(note)
+                     << "\",\"start\":" << it->second << ",\"end\":" << end << '}';
+                starts.erase(it);
+            }
+        }
+    }
+    json << "],\"systems\":[";
+    first = true;
+    for (const auto* repeat : score->repeatList()) {
+        for (const auto* measure : repeat->measureList()) {
+            const auto* displayed = measure;
+            // Covered source measures do not own layout; follow their displayed
+            // multi-measure rest without skipping the intervening playback time.
+            while (displayed && displayed->mmRestCount() < 0) displayed = displayed->prevMeasure();
+            if (displayed && displayed->mmRest()) displayed = displayed->mmRest();
+            const auto* system = displayed ? displayed->system() : nullptr;
+            if (!system || !system->page()) continue;
+            const auto* page = system->page();
+            const auto it = std::find(score->pages().begin(), score->pages().end(), page);
+            const auto rect = page->ldata()->bbox();
+            const auto pos = system->pagePos();
+            const auto box = system->ldata()->bbox();
+            const int start = repeat->utick + measure->tick().ticks() - repeat->tick;
+            if (!first) json << ',';
+            first = false;
+            json << "{\"id\":\"system_" << reinterpret_cast<uintptr_t>(system)
+                 << "\",\"page\":" << (it - score->pages().begin())
+                 << ",\"start\":" << seconds(start)
+                 << ",\"end\":" << seconds(start + measure->ticks().ticks())
+                 << ",\"bounds\":[" << pos.x() / rect.width() << ',' << pos.y() / rect.height()
+                 << ',' << box.width() / rect.width() << ',' << box.height() / rect.height() << "]}";
+        }
+    }
+    json << "]}}"; out = json.str(); return true;
 }
 }

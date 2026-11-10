@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-import { Playback } from './playback.js'
+import { Playback, PlaybackView } from './playback.js'
 export function attachPlayback (mscz, backend) {
   const root = document.getElementById('playback')
   const play = root.querySelector('#play'), stop = root.querySelector('#stop')
@@ -13,11 +13,34 @@ export function attachPlayback (mscz, backend) {
     root.querySelector('#playbackTime').textContent = `${clock(player.position)} / ${clock(player.timeline?.duration || 0)}`
     message.textContent = player.error || ''
   })
+  const follow = document.createElement('input'); follow.type = 'checkbox'; follow.checked = true; follow.id = 'followPlayback'
+  const label = document.createElement('label'); label.style.display = 'inline-flex'; label.style.marginLeft = '12px'; label.append(follow, ' Auto-scroll'); root.querySelector('#playbackTime').after(label)
+  const view = new PlaybackView(player, {
+    getPages: () => document.querySelectorAll('#pages > svg'),
+    onSystem: system => {
+      if (!follow.checked) return
+      const svg = document.querySelectorAll('#pages > svg')[system.page]
+      if (!svg) return
+      const rect = svg.getBoundingClientRect()
+      const top = rect.top + system.bounds[1] * rect.height
+      const bottom = top + system.bounds[3] * rect.height
+      const toolbarBottom = document.querySelector('header')?.getBoundingClientRect().bottom || 60
+      const visibleBottom = root.hidden ? innerHeight : root.getBoundingClientRect().top
+      if (top < toolbarBottom || bottom > visibleBottom) window.scrollBy({ top: top - toolbarBottom - 12, behavior: 'instant' })
+    }
+  })
+  const panelSize = new ResizeObserver(() => {
+    document.getElementById('pages').style.setProperty('--playback-padding', root.hidden ? '16px' : `${root.getBoundingClientRect().height + 16}px`)
+    view.resetFollow()
+  })
+  panelSize.observe(root)
+  follow.onchange = () => view.resetFollow()
   play.addEventListener('click', () => player.state === 'playing' ? player.pause().catch(e => player.fail(e)) : player.play())
   stop.addEventListener('click', () => player.stop())
   root.querySelector('#masterVolume').addEventListener('input', e => player.setVolume(Number(e.target.value) / 100))
   return {
     player,
+    refresh: () => view.resetFollow(),
     setBusy: value => { busy = value; player.changed() },
     stop: () => player.stop(),
     setScore (score, preserve = false) {

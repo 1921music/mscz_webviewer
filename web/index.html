@@ -103,6 +103,9 @@ function updateZoom () {
   document.getElementById('zoomValue').textContent = `${zoom}%`
   document.getElementById('zoomOut').disabled = zoom <= 25
   document.getElementById('zoomIn').disabled = zoom >= 400
+  // PLAYBACK_BEGIN
+  playback?.refresh()
+  // PLAYBACK_END
 }
 
 function setZoom (value) {
@@ -203,6 +206,9 @@ function render () {
     pages.append(isolatePage(document.importNode(doc.documentElement, true)))
   }
 
+  // PLAYBACK_BEGIN
+  playback?.refresh()
+  // PLAYBACK_END
   status.textContent = `${score.pageCount} page(s), ${(bytes / 1024).toFixed(0)} KB of SVG,`
             + ` drawn in ${Math.round(performance.now() - start)} ms`
 }
