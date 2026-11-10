@@ -62,6 +62,8 @@ public:
     ~Session();
 
     int pageCount() const;
+    bool rostrumInfo(std::string& out, std::string& error, bool hideAnnotations = true);
+    bool saveRostrum(const std::string& data, std::string& out, std::string& error) const;
 #ifdef MSCZ_ENABLE_PLAYBACK
     bool playbackTimeline(std::string& out, std::string& error);
 #endif

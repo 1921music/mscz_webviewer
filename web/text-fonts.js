@@ -20,7 +20,10 @@ const bundled = new Map([
   ['leland.otf', ['Leland', 'normal', 'normal']],
   ['lelandtext.otf', ['Leland Text', 'normal', 'normal']],
   ['musejazz.otf', ['MuseJazz', 'normal', 'normal']],
-  ['musejazztext.otf', ['MuseJazz Text', 'normal', 'normal']]
+  ['musejazztext.otf', ['MuseJazz Text', 'normal', 'normal']],
+  ['campania.otf', ['Campania', 'normal', 'normal']],
+  ['mscore-bc.ttf', ['MscoreBC', 'normal', 'normal']],
+  ['mscoretab.ttf', ['MScoreTabulature', 'normal', 'normal']]
 ])
 let nextBackend = 0
 const quote = name => JSON.stringify(name)
@@ -41,6 +44,7 @@ export class BrowserTextFonts {
     this.context.fontKerning = 'normal'
     this.prefix = `mscz-text-${nextBackend++}-`
     this.faces = new Map()
+    this.fontFiles = []
     this.pending = []
     this.cache = new Map()
     this.stats = { calls: 0, measurements: 0, hits: 0, cjk: 0 }
@@ -52,6 +56,7 @@ export class BrowserTextFonts {
     if (!spec) return
     const [family, weight, style] = spec
     const local = this.prefix + family
+    this.fontFiles.push({ local, weight, style, bytes })
     this.faces.set(family.toLowerCase(), { family, local })
     const face = new FontFace(local, bytes, { weight, style })
     this.isReady = false
@@ -63,6 +68,20 @@ export class BrowserTextFonts {
     await document.fonts.ready
     this.cache.clear()
     this.isReady = true
+  }
+
+  // Only raster exports need a self-contained SVG. On-screen pages share the
+  // FontFace registrations above and carry no font data of their own.
+  svgFontCss (svg) {
+    return this.fontFiles.filter(f => svg.includes(f.local)).map(f => {
+      if (!f.css) {
+        let binary = ''
+        for (let i = 0; i < f.bytes.length; i += 32768)
+          binary += String.fromCharCode(...f.bytes.subarray(i, i + 32768))
+        f.css = `@font-face{font-family:${quote(f.local)};font-weight:${f.weight};font-style:${f.style};src:url(data:font/otf;base64,${btoa(binary)})}`
+      }
+      return f.css
+    }).join('\n')
   }
 
   family (requested) {

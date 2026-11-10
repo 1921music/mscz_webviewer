@@ -136,6 +136,18 @@ class Score {
     return this.mscz._pageCount(this.id)
   }
 
+  rostrumInfo () {
+    const fn = this.mscz.m.cwrap('mscz_rostrum_info', 'number', ['number'])
+    if (!fn(this.id)) throw new Error(this.mscz._lastError() || 'Could not read score anchors')
+    return JSON.parse(this.mscz._result())
+  }
+
+  saveRostrum (data) {
+    const fn = this.mscz.m.cwrap('mscz_rostrum_save', 'number', ['number', 'string'])
+    if (!fn(this.id, JSON.stringify(data))) throw new Error(this.mscz._lastError() || 'Could not save MSCZ')
+    return this.mscz.m.HEAPU8.slice(this.mscz._resultPtr(), this.mscz._resultPtr() + this.mscz._resultLen())
+  }
+
   // PLAYBACK_BEGIN
   playbackTimeline () {
     if (!this.id) throw new Error('the score is closed')

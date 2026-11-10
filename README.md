@@ -91,29 +91,29 @@ The HTML contains the JavaScript, WASM engine, fonts, and other required resourc
 
 ### File sizes
 
-Measured on November 9, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
+Measured on November 10, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,138,163** | **3.95 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,880,802 | 4.65 MiB |
-| Engine JavaScript (`mscz-engine.js`) | 17,189 | 16.79 KiB |
-| JavaScript wrapper (`mscz.js`) | 7,582 | 7.40 KiB |
-| Font handling (`text-fonts.js`) | 5,687 | 5.55 KiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,163,159** | **3.97 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,921,878 | 4.69 MiB |
+| Engine JavaScript (`mscz-engine.js`) | 17,307 | 16.90 KiB |
+| JavaScript wrapper (`mscz.js`) | 8,153 | 7.96 KiB |
+| Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.95 MiB total includes the engine, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.97 MiB total includes the engine, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
 | Backend | Engine WASM | Engine gzip | Synth WASM + bank | Synth + bank gzip | Standalone HTML |
 |---|---:|---:|---:|---:|---:|
-| OFF | 4,793,287 | 1,803,050 | 0 | 0 | 3,784,784 |
-| EAS | 4,880,802 | 1,841,267 | 258,187 | 210,142 | 4,138,163 |
-| TSF_SF3 | 4,880,802 | 1,841,267 | 923,235 | 261,472 | 4,206,125 |
+| OFF | 4,834,399 | 1,819,318 | 0 | 0 | 3,807,380 |
+| EAS | 4,921,878 | 1,859,231 | 258,187 | 210,142 | 4,163,159 |
+| TSF_SF3 | 4,921,878 | 1,859,231 | 923,235 | 261,472 | 4,231,121 |
 
 The synth columns include the embedded EAS bank or the separate SF3 bank, but
 exclude JavaScript. The standalone column includes all runtime assets.
-Enabling playback adds 87,515 uncompressed bytes to the score engine, independent
+Enabling playback adds 87,479 uncompressed bytes to the score engine, independent
 of the chosen synth. To reproduce the table, save each build's `web/` directory
 under `build/playback/OFF`, `EAS`, or `TSF_SF3`, then run
 `mise exec -- python scripts/measure-playback.py build/playback`.
@@ -164,17 +164,17 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 ### ファイルサイズ
 
-2026-11-09 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
+2026-11-10 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,138,163** | **3.95 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,880,802 | 4.65 MiB |
-| エンジン JavaScript（`mscz-engine.js`） | 17,189 | 16.79 KiB |
-| JavaScript ラッパー（`mscz.js`） | 7,582 | 7.40 KiB |
-| フォント制御（`text-fonts.js`） | 5,687 | 5.55 KiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,163,159** | **3.97 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,921,878 | 4.69 MiB |
+| エンジン JavaScript（`mscz-engine.js`） | 17,307 | 16.90 KiB |
+| JavaScript ラッパー（`mscz.js`） | 8,153 | 7.96 KiB |
+| フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.95 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.97 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
@@ -187,3 +187,27 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 **GPL-3.0-only** で公開しています。aria から原文のままコピーした [LICENSE.txt](LICENSE.txt) と [第三者通知](THIRD_PARTY_NOTICES.md) を参照してください。
 
 aria・MuseScore 由来の GPL コードを含むため、現在のビューアー全体を MIT ライセンスで配布するには、該当する権利者から別途許諾を得る必要があります。フォントや第三者ライブラリーにはそれぞれのライセンス・著作権表記が適用されます。対応するソースコードとビルド手順はこのリポジトリで提供しています。
+
+## Embedding in Rostrum
+
+Rostrum consumes this repository as a pinned Git submodule. Its UI and packaging
+remain in Rostrum; the shared engine exposes these additional, opt-in APIs:
+
+- `score.rostrumInfo()` returns page dimensions and musical-time/staff anchors,
+  Rostrum settings and annotation SVG placements. It also hides Rostrum annotation
+  images in this session so the host can draw editable overlays. Ordinary viewer
+  opening/rendering never invokes this method.
+- `score.saveRostrum({ settings, annotations })` returns MSCZ bytes, rebuilding
+  from the original input in the original key. It does not alter the current view
+  or source bytes. `settings` is a JSON string; annotation positions and sizes are
+  expressed in staff-space units relative to the anchors above.
+- `engine.textFonts.svgFontCss(svg)` supplies embedded font CSS for raster/export
+  consumers. On-screen pages continue to share the registered FontFace objects.
+- `playbackAssets.workerURL` optionally selects a packaged module worker, for
+  example under a browser extension CSP. Without it, existing HTTP and embedded
+  worker loading is unchanged.
+
+The standalone viewer does not expose annotation editing or saving controls.
+Its existing open, zoom, transpose and optional playback behavior is unchanged.
+The browser suite covers both the viewer lifecycle and opt-in save/reopen across
+HTTP and offline standalone builds, including playback-disabled builds.

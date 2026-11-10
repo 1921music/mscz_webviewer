@@ -340,6 +340,22 @@ const char* mscz_result_ptr()
 }
 
 EMSCRIPTEN_KEEPALIVE
+int mscz_rostrum_info(int id)
+{
+    g_error.clear(); g_result.clear();
+    auto* s = session(id);
+    return s && s->rostrumInfo(g_result, g_error);
+}
+
+EMSCRIPTEN_KEEPALIVE
+int mscz_rostrum_save(int id, const char* json)
+{
+    g_error.clear(); g_result.clear();
+    auto* s = session(id);
+    return s && s->saveRostrum(json ? json : "{}", g_result, g_error);
+}
+
+EMSCRIPTEN_KEEPALIVE
 size_t mscz_result_len()
 {
     return g_result.size();

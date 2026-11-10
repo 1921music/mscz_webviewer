@@ -15,6 +15,15 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include "global/serialization/json.h"
+#include "global/io/buffer.h"
+#include "engraving/infrastructure/mscwriter.h"
+#include "engraving/dom/segment.h"
+#include "engraving/dom/measure.h"
+#include "engraving/dom/system.h"
+#include "engraving/dom/image.h"
+#include "engraving/dom/imageStore.h"
+#include "engraving/dom/staff.h"
 
 #ifndef NO_QT_SUPPORT
 #include <QBuffer>
@@ -581,5 +590,132 @@ bool Session::renderPage(int, int, PageImage&, std::string& error) const
     return false;
 }
 #endif
+
+// Coordinates use the same 72-DPI viewport as the Rostrum page background.
+// Segment keys are musical time (exact rational string), not native pointers.
+bool Session::rostrumInfo(std::string& out, std::string& error, bool hideAnnotations)
+{
+    using namespace mu::engraving;
+    using namespace muse;
+    auto score = m_impl->masterScore();
+    JsonObject root;
+    JsonArray pages, anchors, images;
+    auto pageIndex = [score](const Page* page) {
+        auto it = std::find(score->pages().begin(), score->pages().end(), page);
+        return int(it - score->pages().begin());
+    };
+    const auto inches = m_impl->renderer()->pageSizeInch(score);
+    const double width = std::lrint(inches.width() * 72.0);
+    const double height = std::lrint(inches.height() * 72.0);
+    const double sx = width / std::lrint(inches.width() * DPI);
+    const double sy = height / std::lrint(inches.height() * DPI);
+    for (const auto* page : score->pages()) {
+        (void)page;
+        JsonObject p; p["width"] = width; p["height"] = height;
+        pages.append(p);
+    }
+    for (auto* s = score->firstSegment(SegmentType::ChordRest); s; s = s->next1(SegmentType::ChordRest)) {
+        auto* system = s->measure()->system();
+        if (!system || !system->page()) continue;
+        for (size_t staff = 0; staff < score->nstaves(); ++staff) {
+            if (!system->staff(staff)->show()) continue;
+            JsonObject a;
+            a["key"] = s->tick().toString().toStdString();
+            a["staff"] = int(staff); a["page"] = pageIndex(system->page());
+            a["system"] = system->pagePos().y() * sy;
+            a["x"] = s->pageX() * sx;
+            a["y"] = system->staffYpage(staff) * sy;
+            a["sp"] = score->staff(staff)->spatium(s->tick()) * sx;
+            a["spY"] = score->staff(staff)->spatium(s->tick()) * sy;
+            anchors.append(a);
+        }
+    }
+    score->scanElements([&](EngravingItem* item) {
+        if (!item->isImage()) return;
+        auto* image = toImage(item);
+        if (!image->storeItem() || image->imageType() != ImageType::SVG) return;
+        const auto& bytes = image->storeItem()->buffer();
+        std::string svg(reinterpret_cast<const char*>(bytes.constData()), bytes.size());
+        if (svg.find("https://1921music.github.io/rostrum/ns") == std::string::npos) return;
+        JsonObject i;
+        auto* anchorParent = image->parentItem();
+        while (anchorParent && !anchorParent->isSegment()) anchorParent = anchorParent->parentItem();
+        if (anchorParent) i["key"] = toSegment(anchorParent)->tick().toString();
+        i["staff"] = int(image->staffIdx());
+        auto* parent = image->parentItem();
+        while (parent && !parent->isPage()) parent = parent->parentItem();
+        if (!parent) return;
+        i["svg"] = svg; i["page"] = pageIndex(toPage(parent));
+        i["x"] = image->pagePos().x() * sx; i["y"] = image->pagePos().y() * sy;
+        const double unit = image->sizeIsSpatium() ? image->spatium() : DPMM;
+        i["width"] = image->size().width() * unit * sx;
+        i["height"] = image->size().height() * unit * sy;
+        images.append(i);
+        if (hideAnnotations) image->setVisible(false);
+    });
+    root["pages"] = pages; root["anchors"] = anchors; root["images"] = images;
+    root["settings"] = score->metaTag(u"rostrum:settings");
+    const auto bytes = JsonDocument(root).toJson(JsonDocument::Format::Compact);
+    out.assign(reinterpret_cast<const char*>(bytes.constData()), bytes.size());
+    return true;
+}
+
+bool Session::saveRostrum(const std::string& data, std::string& out, std::string& error) const
+{
+    using namespace mu::engraving;
+    using namespace muse;
+    const auto doc = JsonDocument::fromJson(ByteArray(data.data(), data.size()), &error);
+    if (!error.empty() || !doc.isObject()) return false;
+    auto original = openShared(m_impl->source, m_impl->info, error);
+    if (!original) return false;
+    auto* score = original->m_impl->masterScore();
+    std::vector<EngravingItem*> oldImages;
+    score->scanElements([&](EngravingItem* item) {
+        if (!item->isImage()) return;
+        auto* image = toImage(item);
+        if (!image->storeItem()) return;
+        const auto& b = image->storeItem()->buffer();
+        std::string svg(reinterpret_cast<const char*>(b.constData()), b.size());
+        if (svg.find("https://1921music.github.io/rostrum/ns") != std::string::npos) oldImages.push_back(item);
+    });
+    for (auto* image : oldImages) { image->parentItem()->remove(image); delete image; }
+    const auto root = doc.rootObject();
+    score->setMetaTag(u"rostrum:settings", root.value("settings").toString());
+    const auto annotations = root.value("annotations").toArray();
+    for (size_t n = 0; n < annotations.size(); ++n) {
+        const auto a = annotations.at(n).toObject();
+        const int staff = a.value("staff").toInt();
+        Segment* target = nullptr;
+        for (auto* s = score->firstSegment(SegmentType::ChordRest); s; s = s->next1(SegmentType::ChordRest)) {
+            if (s->tick().toString() == a.value("key").toString()) { target = s; break; }
+        }
+        if (!target || staff < 0 || staff >= int(score->nstaves())) {
+            error = "An annotation anchor no longer exists; the score was not saved."; return false;
+        }
+        const auto svg = a.value("svg").toStdString();
+        auto* image = new Image(target);
+        image->setTrack(staff * VOICES);
+        image->loadFromData("rostrum.svg", ByteArray(svg.data(), svg.size()));
+        image->setSizeIsSpatium(true); image->setAutoScale(false);
+        image->setSize(SizeF(a.value("width").toDouble(), a.value("height").toDouble()));
+        image->setPropertyFlags(Pid::OFFSET, PropertyFlags::UNSTYLED);
+        image->setOffset(PointF(a.value("dx").toDouble(), a.value("dy").toDouble()) * image->spatium());
+        image->setAutoplace(false);
+        target->add(image);
+    }
+    // No thumbnail rendering: the Qt-free SVG renderer need not interpret the
+    // annotation images, and the source bytes must remain unchanged.
+    ByteArray bytes;
+    io::Buffer buffer(&bytes); buffer.open(io::IODevice::ReadWrite);
+    MscWriter::Params params; params.device = &buffer; params.mainFileName = u"score.mscx";
+    MscWriter writer(params);
+    if (!writer.open() || !original->m_impl->project->writeMscz(writer, false)) {
+        error = "Could not write MSCZ."; return false;
+    }
+    writer.close();
+    if (writer.hasError()) { error = "Could not finish MSCZ."; return false; }
+    out.assign(reinterpret_cast<const char*>(bytes.constData()), bytes.size());
+    return true;
+}
 
 } // namespace mscz
