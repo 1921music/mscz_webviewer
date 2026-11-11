@@ -40,6 +40,21 @@ Other dependencies under `vendor/aria/thirdparty` and
 `vendor/aria/src/framework/global/thirdparty` include their own license files
 or per-file license notices. Preserve those notices when redistributing them.
 
+## On-demand PDF export
+
+PDF export fetches [PDFKit 0.17.2](https://github.com/foliojs/pdfkit/tree/v0.17.2)
+(MIT) and [SVG-to-PDFKit 0.1.8](https://github.com/alafr/SVG-to-PDFKit)
+(MIT) from jsDelivr only on demand. Their browser distributions retain the
+upstream notices. PDFKit includes fontkit for OTF/TTF subsetting. These are
+development dependencies for mocked browser tests, not bundled application assets.
+
+Export fonts are fetched from pinned source revisions. Edwin, Leland, MuseJazz
+and Campania retain the licenses under `vendor/aria/fonts`. The fallback
+[Noto Sans JP](https://github.com/1921music/rostrum/blob/b5a00adda871d441ce6274e760c0ea67f7045fb7/licenses/noto_sans_jp.txt)
+is SIL OFL 1.1. `test/fonts/NotoSansJP-test.otf` is a test-only subset of that
+font, with its license at `test/fonts/OFL.txt`; it is never shipped in the
+viewer. See `test/fonts/README.md` for reproduction.
+
 ## Optional playback
 
 The EAS build includes SONiVOX (Sonic Network / Android Open Source Project),

@@ -12,7 +12,7 @@ p.add_argument('--backend', choices=['OFF', 'EAS', 'TSF_SF3'], required=True)
 a = p.parse_args()
 root = Path(__file__).resolve().parent.parent
 a.web.mkdir(parents=True, exist_ok=True)
-for name in ('index.html', 'mscz.js', 'text-fonts.js'):
+for name in ('index.html', 'mscz.js', 'text-fonts.js', 'font-resolver.js', 'pdf-export.js'):
     text = (root / 'web' / name).read_text(encoding='utf-8')
     if a.backend == 'OFF':
         text = re.sub(r'<!-- PLAYBACK_BEGIN -->.*?<!-- PLAYBACK_END -->', '', text, flags=re.S)

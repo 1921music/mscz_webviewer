@@ -33,6 +33,7 @@
 
 <header>
   <input type="file" id="file" accept=".mscz,.musicxml,.xml,.mxl" disabled>
+  <button id="savePdf" type="button" disabled title="Downloads PDF tools and fonts when needed. Internet connection required.">Save PDF</button>
   <div role="group" aria-label="Display transposition">
     <button id="transposeDown" type="button" disabled>− semitone</button>
     <output id="transposeValue" aria-live="polite">Original key</output>
@@ -95,6 +96,8 @@
 
 <script type="module">
 import { load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED } from './mscz.js'
+import { downloadScorePdf } from './pdf-export.js'
+import { defaultFontResolver } from './font-resolver.js'
 // PLAYBACK_BEGIN
 import { attachPlayback } from './playback-ui.js'
 let playback
@@ -118,6 +121,25 @@ showPlayback.addEventListener('change', () => {
 let mscz = null
 let score = null
 let busy = false
+let scoreName = 'score'
+const pdfFonts = defaultFontResolver()
+const savePdf = document.getElementById('savePdf')
+savePdf.addEventListener('click', async () => {
+  if (!score || busy) return
+  busy = true
+  updateTransposeControls()
+  try {
+    await downloadScorePdf(score, { fontResolver: pdfFonts, title: scoreName,
+      filename: `${scoreName.replace(/\.(mscz|musicxml|xml|mxl)$/i, '')}.pdf`,
+      onProgress: message => { status.textContent = message } })
+    status.textContent = 'PDF saved (searchable text, embedded font subsets)'
+  } catch (error) {
+    status.textContent = `Could not save PDF: ${error.message}`
+  } finally {
+    busy = false
+    updateTransposeControls()
+  }
+})
 let zoom = 100
 
 function updateZoom () {
@@ -145,6 +167,7 @@ window.addEventListener('resize', updateZoom)
 updateZoom()
 
 function updateTransposeControls () {
+  savePdf.disabled = !score || busy
   // PLAYBACK_BEGIN
   playback?.setBusy(busy)
   // PLAYBACK_END
@@ -246,7 +269,7 @@ async function openFile (file) {
   updateTransposeControls()
   status.textContent = `opening ${file.name}…`
   try {
-    adoptScore(mscz.open(new Uint8Array(await file.arrayBuffer()), file.name))
+    adoptScore(mscz.open(new Uint8Array(await file.arrayBuffer()), file.name), file.name)
   } catch (e) {
     status.textContent = `${file.name}: ${e.message}`
   } finally {
@@ -255,7 +278,8 @@ async function openFile (file) {
   }
 }
 
-function adoptScore (next) {
+function adoptScore (next, name = 'score') {
+  scoreName = name
   // PLAYBACK_BEGIN
   playback?.setScore(null)
   // PLAYBACK_END
@@ -320,7 +344,7 @@ if (wanted) {
     if (!res.ok) { throw new Error(`${res.status} ${res.statusText}`) }
     const bytes = new Uint8Array(await res.arrayBuffer())
     const name = decodeURIComponent(new URL(wanted, location.href).pathname.split('/').pop())
-    adoptScore(mscz.open(bytes, name))
+    adoptScore(mscz.open(bytes, name), name)
   } catch (e) {
     status.textContent = `${wanted}: ${e.message}`
   }

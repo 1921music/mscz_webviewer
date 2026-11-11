@@ -48,6 +48,11 @@ def main():
                            "from './mscz-engine.js'", f"from '{engine}'")
     wrapper = replace_once(wrapper, "from './text-fonts.js'", f"from '{text_fonts}'")
     html = (web / "index.html").read_text(encoding="utf-8")
+    fonts = module_url((web / 'font-resolver.js').read_text(encoding='utf-8'))
+    pdf = replace_once((web / 'pdf-export.js').read_text(encoding='utf-8'),
+                       "from './font-resolver.js'", f"from '{fonts}'")
+    html = replace_once(html, "from './pdf-export.js'", f"from '{module_url(pdf)}'")
+    html = replace_once(html, "from './font-resolver.js'", f"from '{fonts}'")
     imports = 'load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED'
     html = replace_once(html, f"import {{ {imports} }} from './mscz.js'",
                         f"const {{ {imports} }} = await import(await embeddedModule())")

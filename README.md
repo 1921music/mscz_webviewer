@@ -120,6 +120,59 @@ under `build/playback/OFF`, `EAS`, or `TSF_SF3`, then run
 
 ## Development
 
+### PDF download
+
+Use **Save PDF** to download all pages in the currently displayed key. Page
+sizes and breaks come from the score, independent of screen zoom. Music symbols
+remain vector paths; ordinary text stays searchable/selectable with embedded
+font subsets and Unicode mappings. No score data is uploaded.
+
+PDF export downloads pinned PDFKit 0.17.2 and SVG-to-PDFKit 0.1.8 browser scripts
+from jsDelivr, with integrity checks, only when requested. Export fonts are also
+downloaded on demand: Edwin (including bold/italic), the named music text fonts,
+and Noto Sans JP as the Unicode fallback. No new runtime font binaries are
+bundled. The default fallback may differ from an unavailable original typeface.
+Missing glyphs fail export rather than silently saving empty text. Arbitrary
+score images are not yet supported by PDF export.
+
+The single HTML includes the export adapter but still needs an Internet
+connection for its first PDF export, including when opened via `file://`.
+Ordinary viewing/playback remains offline-capable. Successfully loaded fonts
+and scripts are reused within the page; persistence across reloads is not
+guaranteed. Failed downloads can be retried with Save PDF.
+
+Hosts may import `FontResolver`, `embeddedFontProvider`,
+`downloadFontProvider`, and `localFontProvider` from `web/font-resolver.js`.
+Providers asynchronously accept `{ family, weight, italic, text, purpose }`
+and return `{ family, bytes, format? }`, or `null` to delegate. `bytes` must be
+readable font data (OTF/CFF and TTF are supported). Errors propagate; a resolved
+font lacking required glyphs delegates to the next provider. CSS-only access
+to an OS font is insufficient for embedding. `localFontProvider()` explicitly
+requests browser Local Font Access in a supported secure context and may need
+user permission; the viewer never requests this automatically.
+
+```js
+import { FontResolver, embeddedFontProvider, defaultFontResolver } from './font-resolver.js'
+import { scorePdf, downloadScorePdf } from './pdf-export.js'
+
+const fontResolver = new FontResolver([
+  embeddedFontProvider(hostFontData), // e.g. Rostrum's lazy font byte map
+  ...defaultFontResolver().providers
+])
+const pdf = await scorePdf(score, { fontResolver }) // application/pdf Blob
+// Or downloadScorePdf(score, { fontResolver, filename: 'score.pdf' }).
+```
+
+This is an opt-in host API: importing the score engine alone does not load
+export adapters or PDF libraries. Rostrum does not gain a new PDF control.
+Browser tests mock every external PDF/font request with local assets, verify
+Japanese text extraction, subset embedding, multipage dimensions, HTTP/file
+delivery, retry and host-provided fonts. Run against a generated web payload:
+
+```sh
+MSCZ_WEB_DIR=/path/to/build/web mise exec -- npm run test:pdf
+```
+
 The C++ rendering core is adapted from aria and MuseScore Studio. This project removes the Qt dependencies from the upstream rendering code so that the core can be compiled to WebAssembly without Qt. The web interface lives in [`web/`](web/), the browser integration in [`src/`](src/), and build and verification scripts in [`scripts/`](scripts/).
 
 For build instructions, architecture, provenance, benchmarks, and implementation history, see [Development notes](DEVELOPMENT_NOTES.md). These notes include historical plans and machine-specific paths. GitHub Pages serves the checked-in standalone HTML from `main` → `/docs`.
@@ -157,6 +210,11 @@ MuseScore と MusicXML の楽譜をブラウザーで表示するビューアー
 コード記号の伴奏は、ミキサー末尾の「パート名: Chords」に独立して表示します。コード伴奏だけの音量・パン・ミュート・ソロも操作でき、移調・繰り返しに追従します。
 
 ### 単一 HTML とオフライン利用
+
+「Save PDF」で表示中の移調を反映した全ページをPDF保存できます。文字は検索・選択可能で、
+使用文字のフォントサブセットを埋め込みます。PDF用ライブラリーとフォントは初回保存時に
+ダウンロードするため、単一HTML版でもPDF保存にはインターネット接続が必要です。
+楽譜データは送信しません。通常の表示・演奏は引き続きオフラインで使えます。
 
 [単一 HTML をダウンロード](https://github.com/1921music/mscz_webviewer/raw/refs/heads/main/docs/index.html)して `index.html` として保存し、Microsoft Edge などの対応ブラウザーで直接開けます。**`file://` でもオフラインで利用でき、ローカルサーバーの起動は不要です。**
 
