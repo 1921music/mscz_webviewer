@@ -134,6 +134,8 @@ and Noto Sans JP as the Unicode fallback. No new runtime font binaries are
 bundled. The default fallback may differ from an unavailable original typeface.
 Missing glyphs fail export rather than silently saving empty text. Arbitrary
 score images are not yet supported by PDF export.
+Fallback is resolved for each text run, so a Japanese title does not replace
+the music-text font used by chord symbols elsewhere on the same page.
 
 The single HTML includes the export adapter but still needs an Internet
 connection for its first PDF export, including when opened via `file://`.

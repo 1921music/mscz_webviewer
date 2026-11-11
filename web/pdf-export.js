@@ -60,18 +60,26 @@ export async function scorePdf (score, {
       if (svg.localName !== 'svg' || svg.querySelector('parsererror')) throw new Error('Invalid score SVG')
       const [, , width, height] = svg.getAttribute('viewBox').trim().split(/[\s,]+/).map(Number)
       if (!(width > 0 && height > 0)) throw new Error('Invalid PDF page size')
-      // Group all strings using a face so one resolved font must cover them all.
+      // Resolve each distinct text run independently. A Japanese title can
+      // share a requested face with Latin chord names, without that music font
+      // containing Japanese. Page-wide coverage would replace every chord on
+      // page one with the title's fallback font and invalidate its glyph widths.
+      // Give each run a private SVG family so the synchronous converter's
+      // family-only callback can select the correct embedded subset.
       const requests = new Map(), faces = new Map()
       for (const text of svg.querySelectorAll('text')) {
         const family = inherited(text, 'font-family', 'serif')
         const weightValue = inherited(text, 'font-weight', 'normal')
         const weight = weightValue === 'bold' ? 700 : Number(weightValue) || 400
         const italic = /italic|oblique/.test(inherited(text, 'font-style', 'normal'))
-        const key = fontKey(family, weight >= 600, italic)
-        if (!requests.has(key)) requests.set(key, { family, weight, italic, text: '', purpose: 'pdf' })
-        requests.get(key).text += text.textContent
+        const key = JSON.stringify([fontKey(family, weight >= 600, italic), text.textContent])
+        if (!requests.has(key)) requests.set(key, {
+          exportFamily: `pdf-text-${requests.size}`,
+          request: { family, weight, italic, text: text.textContent, purpose: 'pdf' }
+        })
+        text.setAttribute('font-family', requests.get(key).exportFamily)
       }
-      for (const [key, request] of requests) {
+      for (const { exportFamily, request } of requests.values()) {
         onProgress(`Loading PDF fonts (page ${page + 1}/${score.pageCount})…`)
         let selected
         await fontResolver.resolve(request, font => {
@@ -86,7 +94,7 @@ export async function scorePdf (score, {
           if (covers) selected = { name, font }
           return covers
         })
-        faces.set(key, selected)
+        faces.set(fontKey(exportFamily, request.weight >= 600, request.italic), selected)
       }
       doc.addPage({ size: [width, height], margin: 0 })
       SVGtoPDF(doc, svg, 0, 0, {

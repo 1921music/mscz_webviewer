@@ -153,3 +153,40 @@ test('PDF: missing glyphs fail without silent text loss; providers delegate', as
   expect(result.message).toContain('No export font covers')
   expect(unexpected).toEqual([])
 })
+
+for (const standalone of [false, true]) {
+  test(`PDF: ${standalone ? 'standalone' : 'HTTP'} Japanese title does not replace chord fonts on page one`, async ({ page, context }, testInfo) => {
+    const { unexpected } = await network(context)
+    await open(page, standalone, testInfo)
+    // The real score uses MuseJazz Text for both the Japanese title and split
+    // chord runs. Only the title needs Noto; fallback must not affect siblings
+    // or change the chord face between pages. Never copy a user's score here.
+    const bytes = await page.evaluate(async () => {
+      const module = [...document.querySelectorAll('script[type=module]')].map(s => s.textContent).find(s => s.includes('downloadScorePdf'))
+      const url = module.match(/import \{ downloadScorePdf \} from '([^']+)'/)[1]
+      const { scorePdf } = await import(url)
+      const score = { pageCount: 2, pageSvg: pn => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 400"><g font-family="MuseJazz Text" font-size="18">${pn === 0 ? '<text x="20" y="30">日本語</text>' : ''}<text x="20" y="70">F</text><text x="32" y="70">♯</text><text x="44" y="70">m7</text></g></svg>` }
+      return [...new Uint8Array(await (await scorePdf(score)).arrayBuffer())]
+    })
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const document = await pdfjs.getDocument({ data: new Uint8Array(bytes), useSystemFonts: false }).promise
+    const chordFaces = []
+    for (let pn = 1; pn <= 2; pn++) {
+      const pg = await document.getPage(pn), content = await pg.getTextContent({ disableCombineTextItems: true })
+      await pg.getOperatorList()
+      const chord = content.items.find(item => item.str.includes('F'))
+      expect(chord).toBeDefined()
+      const font = pg.commonObjs.get(chord.fontName)
+      expect(font.missingFile).toBe(false)
+      expect(font.name).toContain('MuseJazz')
+      chordFaces.push(font.name)
+      if (pn === 1) {
+        const title = content.items.find(item => item.str.includes('日本語'))
+        expect(pg.commonObjs.get(title.fontName).name).toContain('NotoSansJP')
+      }
+    }
+    expect(chordFaces[0]).toBe(chordFaces[1])
+    await document.destroy()
+    expect(unexpected).toEqual([])
+  })
+}

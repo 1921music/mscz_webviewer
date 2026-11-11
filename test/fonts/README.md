@@ -9,5 +9,5 @@ glyphs to verify that PDF export subsets again. It is not a runtime asset.
 Reproduce with fontTools (replace `SOURCE.otf` with the upstream font):
 
 ```sh
-mise exec -- python -c "from fontTools import subset; f=subset.load_font('SOURCE.otf', subset.Options()); s=subset.Subsetter(); s.populate(unicodes=list(range(32,592))+list(range(0x3040,0x3100))+list(map(ord,'日本語の歌詞'))); s.subset(f); f.save('test/fonts/NotoSansJP-test.otf')"
+mise exec -- python -c "from fontTools import subset; f=subset.load_font('SOURCE.otf', subset.Options()); s=subset.Subsetter(); s.populate(unicodes=list(range(32,592))+list(range(0x3040,0x3100))+list(map(ord,'日本語の歌詞♯'))); s.subset(f); f.save('test/fonts/NotoSansJP-test.otf')"
 ```
