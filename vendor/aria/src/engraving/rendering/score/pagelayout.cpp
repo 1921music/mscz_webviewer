@@ -133,6 +133,7 @@ void PageLayout::collectPage(LayoutContext& ctx)
 
     const double slb = conf.styleMM(Sid::staffLowerBorder);
     const bool breakPages = conf.viewMode() != LayoutMode::SYSTEM;
+    const MeasureBase* preservedPageEnd = breakPages ? conf.preservedPageEnd(page->pageNumber()) : nullptr;
     const double footerExtension = HeaderFooterLayout::footerExtension(ctx, page);
     const double headerExtension = HeaderFooterLayout::headerExtension(ctx, page);
     const double headerFooterPadding = conf.styleMM(Sid::staffHeaderFooterPadding);
@@ -243,9 +244,15 @@ void PageLayout::collectPage(LayoutContext& ctx)
         assert(ctx.state().curSystem() != nextSystem);
         ctx.mutState().setCurSystem(nextSystem);
 
-        bool isPageBreak = !ctx.state().curSystem() || (breakPages && ctx.state().prevSystem()->pageBreak());
+        const MeasureBase* lastOnPage = ctx.state().prevSystem()->last();
+        if (lastOnPage && lastOnPage->isMeasure() && toMeasure(lastOnPage)->isMMRest()) {
+            lastOnPage = toMeasure(lastOnPage)->mmRestLast();
+        }
+        bool isPageBreak = !ctx.state().curSystem()
+                           || (preservedPageEnd ? lastOnPage == preservedPageEnd
+                                                : breakPages && ctx.state().prevSystem()->pageBreak());
 
-        if (!isPageBreak) {
+        if (!isPageBreak && !preservedPageEnd) {
             double dist = SystemLayout::minDistance(ctx.state().prevSystem(), ctx.state().curSystem(), ctx)
                           + ctx.state().curSystem()->height();
             Box* vbox = ctx.state().curSystem()->vbox();
@@ -524,6 +531,12 @@ void PageLayout::layoutArticAndFingeringOnCrossStaffBeams(LayoutContext& ctx, Sy
 void PageLayout::layoutPage(LayoutContext& ctx, Page* page, double restHeight, double footerPadding)
 {
     TRACEFUNC;
+    if (restHeight < 0.0 && ctx.conf().preservedPageEnd(page->pageNumber())) {
+        // Collect the original page's systems first, then compress their gaps
+        // before cross-staff elements, masks and dividers get final positions.
+        squeezePageToFit(page, -restHeight);
+        return;
+    }
     if (restHeight < 0.0) {
         LOGN("restHeight < 0.0: %f\n", restHeight);
         restHeight = 0;
@@ -609,6 +622,40 @@ void PageLayout::layoutPage(LayoutContext& ctx, Page* page, double restHeight, d
     }
 
     page->systems().back()->mutldata()->setPosY(y);
+}
+
+void PageLayout::squeezePageToFit(Page* page, double overflow)
+{
+    auto& systems = page->systems();
+    // Prefer whitespace between music systems. Preserve title/frame gaps if
+    // possible; as with horizontal squeezing, allow collisions as a last resort.
+    for (int pass = 0; pass < 3 && overflow > 0.0; ++pass) {
+        std::vector<double> gaps(systems.size(), 0.0);
+        double available = 0.0;
+        for (size_t i = 1; i < systems.size(); ++i) {
+            const System* prev = systems[i - 1];
+            const System* next = systems[i];
+            if (pass != 1 && (prev->vbox() || next->vbox())) {
+                continue;
+            }
+            const double extent = pass == 2 ? 0.0 : prev->height();
+            gaps[i] = std::max(0.0, next->y() - prev->y() - extent);
+            available += gaps[i];
+        }
+        if (available <= 0.0) {
+            continue;
+        }
+        const double reduction = std::min(overflow, available);
+        double shift = 0.0;
+        for (size_t i = 1; i < systems.size(); ++i) {
+            shift += gaps[i] * (reduction / available);
+            systems[i]->mutldata()->setPosY(systems[i]->y() - shift);
+        }
+        overflow -= reduction;
+    }
+    for (size_t i = 1; i < systems.size(); ++i) {
+        systems[i - 1]->setDistance(systems[i]->y() - systems[i - 1]->y());
+    }
 }
 
 void PageLayout::distributeStaves(LayoutContext& ctx, Page* page, double footerPadding)

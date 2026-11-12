@@ -41,3 +41,4 @@ Record every deliberate change here as it is made, so the reason survives.
 - Initialize the MuseJazz Qt resource explicitly, matching its QRC registration.
 - Include rehearsal-mark alignment in the pre-4.7 style-position conversion, preserving legacy right alignment and avoiding extra collision-driven system spacing.
 - Register legacy-style-defaults-v450.mss in engraving.qrc; DefaultStyle references this existing file, but MuseScore v4.7.5 omitted its resource alias.
+- Add display-only original page boundaries to LayoutOptions and compress system gaps before final page layout when a transposed page is too tall. Normal score layout and serialized source notation are unchanged.

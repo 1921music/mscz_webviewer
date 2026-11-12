@@ -14,10 +14,10 @@ This project uses substantial portions of [aria](https://github.com/hdi200/aria)
 2. Choose a score file, or drag and drop it onto the page.
 3. Use the zoom and semitone transpose controls. Reset transposition to return to the original key.
 
-**Keep original system breaks** is checked by default: transposition keeps the
-original measures on each system and squeezes spacing when necessary. Very
-crowded notation can overlap. Uncheck it to use normal automatic wrapping.
-Page count can still change when transposition requires more vertical space.
+**レイアウトを維持する** (Keep original layout) is checked by default:
+transposition keeps the original systems, page boundaries and page count.
+Horizontal note spacing and vertical system gaps are squeezed when necessary;
+very crowded notation can overlap. Uncheck it to use normal automatic wrapping.
 Hosts can pass a third boolean to
 `score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks)`;
 omitting it keeps the current setting (`score.viewPreserveSystemBreaks`).

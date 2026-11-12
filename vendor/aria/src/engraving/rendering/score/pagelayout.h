@@ -40,6 +40,7 @@ public:
 
 private:
     static void layoutPage(LayoutContext& ctx, Page* page, double restHeight, double footerPadding);
+    static void squeezePageToFit(Page* page, double overflow);
     static void distributeStaves(LayoutContext& ctx, Page* page, double footerPadding);
 
     static void layoutCrossStaffElements(LayoutContext& ctx, Page* page);

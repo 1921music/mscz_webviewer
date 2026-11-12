@@ -4,10 +4,15 @@ const fs = require('node:fs'), path = require('node:path')
 // Many short notes make extra key-signature/accidental space affect wrapping.
 const measures = Array.from({ length: 48 }, (_, i) => `<measure number="${i + 1}">${i ? '' : '<attributes><divisions>4</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>G</sign><line>2</line></clef></attributes>'}${Array.from({ length: 16 }, (_, j) => `<note><pitch><step>${['C', 'D', 'E', 'F', 'G', 'A', 'B'][j % 7]}</step><alter>${j % 3 === 0 ? 1 : 0}</alter><octave>4</octave></pitch><duration>1</duration><type>16th</type></note>`).join('')}</measure>`).join('')
 const fixture = Buffer.from(`<?xml version="1.0"?><score-partwise version="4.0"><defaults><scaling><millimeters>7</millimeters><tenths>40</tenths></scaling><page-layout><page-height>1683</page-height><page-width>1190</page-width></page-layout></defaults><part-list><score-part id="P1"><part-name>Piano</part-name><score-instrument id="I1"><instrument-name>Piano</instrument-name></score-instrument><midi-instrument id="I1"><midi-channel>1</midi-channel><midi-program>1</midi-program></midi-instrument></score-part></part-list><part id="P1">${measures}</part></score-partwise>`)
-const samples = [{ name: 'dense.musicxml', buffer: fixture }, ...JSON.parse(process.env.MSCZ_LAYOUT_TEST_SCORES || '[]').map(file => ({ name: path.basename(file), buffer: fs.readFileSync(file) }))]
+const pianoFixture = Buffer.from(fixture.toString()
+  .replace('<clef>', '<staves>2</staves><clef number="1">')
+  .replace('</attributes>', '<clef number="2"><sign>F</sign><line>4</line></clef></attributes>')
+  .replace(/<measure number="(\d+)">/g, (tag, number) => tag + (Number(number) % 12 === 1 && Number(number) > 1 ? '<print new-page="yes"/>' : ''))
+  .replaceAll('</measure>', '<backup><duration>16</duration></backup><note><rest/><duration>16</duration><voice>2</voice><type>whole</type><staff>2</staff></note></measure>'))
+const samples = [{ name: 'dense.musicxml', buffer: fixture }, { name: 'piano-pages.musicxml', buffer: pianoFixture }, ...JSON.parse(process.env.MSCZ_LAYOUT_TEST_SCORES || '[]').map(file => ({ name: path.basename(file), buffer: fs.readFileSync(file) }))]
 
 for (const sample of samples) {
-  test(`original system breaks survive transposition: ${sample.name}`, async ({ page, context }, testInfo) => {
+  test(`original layout survives transposition: ${sample.name}`, async ({ page, context }, testInfo) => {
     test.setTimeout(240000)
     const external = [], errors = []
     page.on('pageerror', error => errors.push(error.message))
@@ -21,6 +26,7 @@ for (const sample of samples) {
     await page.locator('#file').setInputFiles({ name: sample.name, mimeType: 'application/octet-stream', buffer: sample.buffer })
     await expect(page.locator('#pages svg').first()).toBeVisible({ timeout: 45000 })
     await expect(page.locator('#preserveSystemBreaks')).toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'レイアウトを維持する', exact: true })).toBeChecked()
     const result = await page.evaluate(() => {
       const score = window.__mscz.score
       const groups = () => {
@@ -30,19 +36,21 @@ for (const sample of samples) {
           if (!systems.has(key)) systems.set(key, [])
           systems.get(key).push(`${a.key}:${a.staff}`)
         }
-        return [...systems.values()]
+        return [...systems].map(([key, anchors]) => ({ page: Number(key.split(':')[0]), anchors }))
       }
+      const systemsOnPaper = () => typeof score.playbackTimeline !== 'function' || score.playbackTimeline().visual.systems.every(s =>
+        s.page >= 0 && s.page < score.pageCount && s.bounds.every(Number.isFinite) && s.bounds[1] >= -0.001 && s.bounds[1] + s.bounds[3] <= 1.001)
       const original = groups(), originalPages = score.pageCount, originalFingerprint = score.layoutFingerprint()
       const offsets = []
       for (const spelling of ['readable', 'preserve']) {
         for (let offset = -12; offset <= 12; ++offset) {
           if (!offset) continue
           score.setViewTransposeSemitones(offset, spelling, true)
-          const fixed = groups(), fixedPages = score.pageCount
+          const fixed = groups(), fixedPages = score.pageCount, onPaper = systemsOnPaper()
           score.setViewTransposeSemitones(offset, spelling, false)
           const automatic = groups(), automaticPages = score.pageCount
           score.setViewTransposeSemitones(offset, spelling, true)
-          offsets.push({ offset, spelling, stable: JSON.stringify(fixed) === JSON.stringify(original), fixedPages,
+          offsets.push({ offset, spelling, stable: JSON.stringify(fixed) === JSON.stringify(original), fixedPages, onPaper,
             roundtrip: JSON.stringify(groups()) === JSON.stringify(fixed), automaticPages,
             automaticChanged: JSON.stringify(automatic) !== JSON.stringify(original) })
         }
@@ -54,6 +62,8 @@ for (const sample of samples) {
     fs.writeFileSync(testInfo.outputPath('layout-results.json'), JSON.stringify(result, null, 2))
     expect(result.systems).toBeGreaterThan(1)
     expect(result.offsets.every(o => o.stable && o.roundtrip)).toBe(true)
+    expect(result.offsets.every(o => o.fixedPages === result.originalPages)).toBe(true)
+    expect(result.offsets.every(o => o.onPaper)).toBe(true)
     expect(result.exactReset).toBe(true)
     if (sample.name === 'dense.musicxml') expect(result.offsets.some(o => o.automaticChanged)).toBe(true)
     // Toggle in place in an already transposed score, including after reset.

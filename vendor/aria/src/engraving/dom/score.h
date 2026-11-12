@@ -917,6 +917,7 @@ public:
 
     //! NOTE Layout
     const LayoutOptions& layoutOptions() const { return m_layoutOptions; }
+    void setPreservedPageEnds(const std::vector<const MeasureBase*>& ends) { m_layoutOptions.preservedPageEnds = ends; }
     void setLayoutMode(LayoutMode lm) { m_layoutOptions.mode = lm; }
     void setShowVBox(bool v) { m_layoutOptions.isShowVBox = v; }
     double noteHeadWidth() const { return m_layoutOptions.noteHeadWidth; }

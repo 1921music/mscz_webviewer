@@ -22,7 +22,10 @@
 #ifndef MU_ENGRAVING_LAYOUTOPTIONS_H
 #define MU_ENGRAVING_LAYOUTOPTIONS_H
 
+#include <vector>
+
 namespace mu::engraving {
+class MeasureBase;
 //---------------------------------------------------------
 //   LayoutMode
 //    PAGE   The normal page view, honors page and line breaks.
@@ -41,6 +44,10 @@ struct LayoutOptions
 
     bool isShowVBox = true;
     double noteHeadWidth = 0.0;
+
+    // Display-only page boundaries; not serialized into the source score.
+    // Use real measures rather than generated multi-measure rests.
+    std::vector<const MeasureBase*> preservedPageEnds;
 
     bool isMode(LayoutMode m) const { return mode == m; }
     bool isLinearMode() const { return mode == LayoutMode::LINE || mode == LayoutMode::HORIZONTAL_FIXED; }

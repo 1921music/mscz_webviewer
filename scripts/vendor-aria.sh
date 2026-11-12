@@ -19,6 +19,20 @@ ARIA_DIR="${ARIA_DIR:-/mnt/c/work/20260809/aria}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEST="${REPO_DIR}/vendor/aria"
 
+if [ "${1:-}" = "--refresh-notes" ]; then
+    # Update divergence notes without copying over the locally patched engine.
+    mise exec -- python - "${REPO_DIR}" <<'PY'
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+marker = '\n## Divergence from upstream\n'
+notes = (root / 'scripts/vendor-aria.sh').read_text().split(marker, 1)[1].split('\nEOF', 1)[0]
+manifest = root / 'vendor/aria/VENDOR.md'
+manifest.write_bytes((manifest.read_text().split(marker, 1)[0] + marker + notes + '\n').encode())
+PY
+    exit 0
+fi
+
 if [ ! -d "${ARIA_DIR}/.git" ]; then
     echo "aria checkout not found at ${ARIA_DIR}" >&2
     exit 1
@@ -158,6 +172,7 @@ Record every deliberate change here as it is made, so the reason survives.
 - Initialize the MuseJazz Qt resource explicitly, matching its QRC registration.
 - Include rehearsal-mark alignment in the pre-4.7 style-position conversion, preserving legacy right alignment and avoiding extra collision-driven system spacing.
 - Register legacy-style-defaults-v450.mss in engraving.qrc; DefaultStyle references this existing file, but MuseScore v4.7.5 omitted its resource alias.
+- Add display-only original page boundaries to LayoutOptions and compress system gaps before final page layout when a transposed page is too tall. Normal score layout and serialized source notation are unchanged.
 EOF
 
 echo

@@ -420,6 +420,17 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool p
         auto interval = Interval::allIntervals[intervals[std::abs(semitones)]];
         if (semitones < 0) { interval.flip(); }
         spelling::TranspositionSpelling policy(score, interval.chromatic * 7 - interval.diatonic * 12);
+        if (preserveSystemBreaks) {
+            std::vector<const MeasureBase*> pageEnds;
+            for (const Page* page : score->pages()) {
+                auto last = page->systems().empty() ? nullptr : page->systems().back()->last();
+                if (last && last->isMeasure() && toMeasure(last)->isMMRest()) {
+                    last = toMeasure(last)->mmRestLast();
+                }
+                pageEnds.push_back(last);
+            }
+            score->setPreservedPageEnds(pageEnds);
+        }
         score->startCmd(muse::TranslatableString("mscz_test", "Transpose display"));
         if (preserveSystemBreaks) {
             // Capture the freshly loaded source's systems, never the previous

@@ -105,6 +105,10 @@ public:
 
     bool isShowVBox() const { return options().isShowVBox; }
     double noteHeadWidth() const { return options().noteHeadWidth; }
+    const MeasureBase* preservedPageEnd(size_t page) const {
+        const auto& ends = options().preservedPageEnds;
+        return page < ends.size() ? ends[page] : nullptr;
+    }
     bool isShowInvisible() const;
     int pageNumberOffset() const;
     bool isVerticalSpreadEnabled() const;

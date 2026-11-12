@@ -82,7 +82,7 @@ public:
     enum class TransposeSpelling { Preserve = 0, Readable = 1 };
     TransposeSpelling viewTransposeSpelling() const;
     bool setViewTranspose(int semitones, TransposeSpelling spelling, std::string& error);
-    //! Keep the original systems when transposing, squeezing spacing if needed.
+    //! Keep original systems and page boundaries, squeezing both axes if needed.
     //! Enabled by default. Disabling uses the source's normal layout rules.
     bool viewPreserveSystemBreaks() const;
     bool setViewTranspose(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks, std::string& error);
