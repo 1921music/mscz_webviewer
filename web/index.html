@@ -43,6 +43,7 @@
       <option value="readable">Readable spelling</option>
       <option value="preserve">Preserve spelling</option>
     </select>
+    <label><input type="checkbox" id="preserveSystemBreaks" checked disabled> Keep original system breaks</label>
   </div>
   <div role="group" aria-label="Score zoom">
     <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
@@ -178,6 +179,8 @@ function updateTransposeControls () {
   document.getElementById('transposeReset').disabled = !score || busy || offset === 0
   document.getElementById('transposeSpelling').disabled = !score || busy
   if (score) { document.getElementById('transposeSpelling').value = score.viewTransposeSpelling }
+  document.getElementById('preserveSystemBreaks').disabled = !score || busy
+  if (score && !busy) { document.getElementById('preserveSystemBreaks').checked = score.viewPreserveSystemBreaks }
   document.getElementById('file').disabled = !mscz || busy
 }
 
@@ -297,7 +300,7 @@ function adoptScore (next, name = 'score') {
   updateTransposeControls()
 }
 
-async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) {
+async function transposeTo (semitones, spelling = score?.viewTransposeSpelling, preserveSystemBreaks = score?.viewPreserveSystemBreaks) {
   if (!score || busy) { return }
   // PLAYBACK_BEGIN
   playback?.stop()
@@ -308,7 +311,7 @@ async function transposeTo (semitones, spelling = score?.viewTransposeSpelling) 
   // Let the busy state appear before the synchronous engine/layout work.
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
   try {
-    score.setViewTransposeSemitones(semitones, spelling)
+    score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks)
     // PLAYBACK_BEGIN
     playback?.setScore(score, true)
     // PLAYBACK_END
@@ -325,6 +328,7 @@ document.getElementById('transposeDown').addEventListener('click', () => transpo
 document.getElementById('transposeUp').addEventListener('click', () => transposeTo(score.viewTransposeSemitones + 1))
 document.getElementById('transposeReset').addEventListener('click', () => transposeTo(0))
 document.getElementById('transposeSpelling').addEventListener('change', e => transposeTo(score.viewTransposeSemitones, e.target.value))
+document.getElementById('preserveSystemBreaks').addEventListener('change', e => transposeTo(score.viewTransposeSemitones, score.viewTransposeSpelling, e.target.checked))
 
 document.getElementById('file').addEventListener('change', e => {
   if (e.target.files[0]) { openFile(e.target.files[0]) }

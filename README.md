@@ -14,6 +14,14 @@ This project uses substantial portions of [aria](https://github.com/hdi200/aria)
 2. Choose a score file, or drag and drop it onto the page.
 3. Use the zoom and semitone transpose controls. Reset transposition to return to the original key.
 
+**Keep original system breaks** is checked by default: transposition keeps the
+original measures on each system and squeezes spacing when necessary. Very
+crowded notation can overlap. Uncheck it to use normal automatic wrapping.
+Page count can still change when transposition requires more vertical space.
+Hosts can pass a third boolean to
+`score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks)`;
+omitting it keeps the current setting (`score.viewPreserveSystemBreaks`).
+
 Supported files: **`.mscz`, `.musicxml`, `.xml` (score-partwise), and `.mxl`**.
 
 Scores selected from your device are processed locally in your browser; they are not uploaded to a server. The current interface includes Japanese labels. Optional GM playback provides play/pause/stop, master volume, and per-part volume, pan, mute and solo. Score editing is not included.

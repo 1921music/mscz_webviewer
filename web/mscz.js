@@ -56,7 +56,8 @@ export class Mscz {
     this._viewTranspose = c('mscz_view_transpose_semitones', 'number', ['number'])
     this._setViewTranspose = c('mscz_set_view_transpose_semitones', 'number', ['number', 'number'])
     this._viewSpelling = c('mscz_view_transpose_spelling', 'number', ['number'])
-    this._setTranspose = c('mscz_set_view_transpose', 'number', ['number', 'number', 'number'])
+    this._viewPreserveSystemBreaks = c('mscz_view_preserve_system_breaks', 'number', ['number'])
+    this._setTranspose = c('mscz_set_view_transpose_layout', 'number', ['number', 'number', 'number', 'number'])
     this._renderSvg = c('mscz_render_page_svg', 'number', ['number', 'number', 'number', 'number', 'number'])
     this._fingerprint = c('mscz_layout_fingerprint', 'number', ['number'])
     this._resultPtr = c('mscz_result_ptr', 'number', [])
@@ -163,13 +164,14 @@ class Score {
   }
 
   // Absolute offset from the original score, not from the current view.
-  setViewTransposeSemitones (semitones, spelling = this.viewTransposeSpelling) {
+  setViewTransposeSemitones (semitones, spelling = this.viewTransposeSpelling, preserveSystemBreaks = this.viewPreserveSystemBreaks) {
     if (!this.id) { throw new Error('the score is closed') }
     if (!Number.isInteger(semitones) || semitones < -12 || semitones > 12) {
       throw new RangeError('display transposition must be an integer from -12 to +12')
     }
     if (!['preserve', 'readable'].includes(spelling)) { throw new RangeError('unknown spelling mode') }
-    if (!this.mscz._setTranspose(this.id, semitones, spelling === 'readable' ? 1 : 0)) {
+    if (typeof preserveSystemBreaks !== 'boolean') { throw new TypeError('preserveSystemBreaks must be a boolean') }
+    if (!this.mscz._setTranspose(this.id, semitones, spelling === 'readable' ? 1 : 0, preserveSystemBreaks ? 1 : 0)) {
       throw new Error(this.mscz._lastError() || 'could not transpose the score')
     }
   }
@@ -177,6 +179,11 @@ class Score {
   get viewTransposeSpelling () {
     if (!this.id) { throw new Error('the score is closed') }
     return this.mscz._viewSpelling(this.id) === 1 ? 'readable' : 'preserve'
+  }
+
+  get viewPreserveSystemBreaks () {
+    if (!this.id) { throw new Error('the score is closed') }
+    return this.mscz._viewPreserveSystemBreaks(this.id) === 1
   }
 
   setViewTransposeSpelling (spelling) {

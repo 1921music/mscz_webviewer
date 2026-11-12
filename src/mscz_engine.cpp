@@ -48,6 +48,8 @@
 #include "engraving/dom/mscore.h"
 #include "engraving/dom/page.h"
 #include "engraving/editing/transpose.h"
+#include "engraving/editing/editsystemlocks.h"
+#include "engraving/dom/systemlock.h"
 #include "engraving/rendering/iscorerenderer.h"
 
 #include "mscz_app_stub.h"
@@ -224,6 +226,7 @@ public:
     mu::engraving::MasterScore* masterScore() const { return project->masterScore(); }
     int pageCount = 0;
     int transposeSemitones = 0;
+    bool preserveSystemBreaks = true;
     TransposeSpelling transposeSpelling = TransposeSpelling::Readable;
 
     mu::engraving::rendering::IScoreRenderer* renderer() const
@@ -375,6 +378,16 @@ Session::TransposeSpelling Session::viewTransposeSpelling() const
 
 bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::string& error)
 {
+    return setViewTranspose(semitones, spelling, m_impl->preserveSystemBreaks, error);
+}
+
+bool Session::viewPreserveSystemBreaks() const
+{
+    return m_impl->preserveSystemBreaks;
+}
+
+bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks, std::string& error)
+{
     error.clear();
     if (spelling != TransposeSpelling::Preserve && spelling != TransposeSpelling::Readable) {
         error = "Unknown transposition spelling mode.";
@@ -384,7 +397,8 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::s
         error = "Display transposition must be between -12 and +12 semitones.";
         return false;
     }
-    if (semitones == m_impl->transposeSemitones && spelling == m_impl->transposeSpelling) {
+    if (semitones == m_impl->transposeSemitones && spelling == m_impl->transposeSpelling
+        && preserveSystemBreaks == m_impl->preserveSystemBreaks) {
         return true;
     }
 
@@ -407,6 +421,16 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::s
         if (semitones < 0) { interval.flip(); }
         spelling::TranspositionSpelling policy(score, interval.chromatic * 7 - interval.diatonic * 12);
         score->startCmd(muse::TranslatableString("mscz_test", "Transpose display"));
+        if (preserveSystemBreaks) {
+            // Capture the freshly loaded source's systems, never the previous
+            // transposed view. Existing source locks and page breaks survive.
+            for (const System* system : score->systems()) {
+                auto first = system->first();
+                if (first && (first->isMeasure() || first->isHBox()) && !system->isLocked()) {
+                    EditSystemLocks::undoAddSystemLock(score, new SystemLock(first, system->last()));
+                }
+            }
+        }
         score->cmdSelectAll();
         const bool ok = Transpose::transpose(score, TransposeMode::BY_INTERVAL,
                                              semitones > 0 ? TransposeDirection::UP : TransposeDirection::DOWN,
@@ -425,6 +449,7 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, std::s
     }
     candidate->m_impl->transposeSemitones = semitones;
     candidate->m_impl->transposeSpelling = spelling;
+    candidate->m_impl->preserveSystemBreaks = preserveSystemBreaks;
     m_impl.swap(candidate->m_impl);
     return true;
 }
