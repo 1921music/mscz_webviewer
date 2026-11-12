@@ -14,7 +14,7 @@ This project uses substantial portions of [aria](https://github.com/hdi200/aria)
 2. Choose a score file, or drag and drop it onto the page.
 3. Use the zoom and semitone transpose controls. Reset transposition to return to the original key.
 
-**レイアウトを維持する** (Keep original layout) is checked by default:
+**Keep layout** is checked by default:
 transposition keeps the original systems, page boundaries and page count.
 Horizontal note spacing and vertical system gaps are squeezed when necessary;
 very crowded notation can overlap. Uncheck it to use normal automatic wrapping.

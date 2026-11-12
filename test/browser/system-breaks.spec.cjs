@@ -26,7 +26,7 @@ for (const sample of samples) {
     await page.locator('#file').setInputFiles({ name: sample.name, mimeType: 'application/octet-stream', buffer: sample.buffer })
     await expect(page.locator('#pages svg').first()).toBeVisible({ timeout: 45000 })
     await expect(page.locator('#preserveSystemBreaks')).toBeChecked()
-    await expect(page.getByRole('checkbox', { name: 'レイアウトを維持する', exact: true })).toBeChecked()
+    await expect(page.getByRole('checkbox', { name: 'Keep layout', exact: true })).toBeChecked()
     const result = await page.evaluate(() => {
       const score = window.__mscz.score
       const groups = () => {
