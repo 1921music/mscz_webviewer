@@ -101,6 +101,7 @@ Open LilyPond lead sheets as `.ly` or individual OpenBook `.ly.tera` files.
 A complete OpenBook `.ly` offers a song picker. Templates use their declared
 default version. The converter runs locally. On the HTTP edition its WASM
 module is fetched when a LilyPond score is first opened.
+LilyPond lead sheets play with a flute melody and a quieter piano accompaniment.
 
 ### File sizes
 
@@ -108,8 +109,8 @@ Measured on November 21, 2026, with default EAS playback. MiB = 1,048,576 bytes;
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,408,364** | **4.20 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,931,593 | 4.70 MiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,408,536** | **4.20 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,931,776 | 4.70 MiB |
 | LilyPond converter WASM (`lilypond.wasm`) | 393,155 | 383.94 KiB |
 | Engine JavaScript (`mscz-engine.js`) | 17,429 | 17.02 KiB |
 | JavaScript wrapper (`mscz.js`) | 8,632 | 8.43 KiB |
@@ -244,8 +245,8 @@ LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.l
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,408,364** | **4.20 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,931,593 | 4.70 MiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,408,536** | **4.20 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,931,776 | 4.70 MiB |
 | LilyPond 変換 WASM (`lilypond.wasm`) | 393,155 | 383.94 KiB |
 | エンジン JavaScript（`mscz-engine.js`） | 17,429 | 17.02 KiB |
 | JavaScript ラッパー（`mscz.js`） | 8,632 | 8.43 KiB |

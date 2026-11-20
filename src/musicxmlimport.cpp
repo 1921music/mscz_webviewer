@@ -8,9 +8,11 @@
 #include "serialization/xmlstreamreader.h"
 #include "engraving/dom/chordrest.h"
 #include "engraving/dom/harmony.h"
+#include "engraving/dom/instrument.h"
 #include "engraving/dom/lyrics.h"
 #include "engraving/dom/masterscore.h"
 #include "engraving/dom/measure.h"
+#include "engraving/dom/part.h"
 #include "engraving/dom/segment.h"
 #include "engraving/dom/symbol.h"
 #include "engraving/dom/tempotext.h"
@@ -250,6 +252,30 @@ bool applyLilyPondEngraving(mu::engraving::MasterScore* score, const muse::ByteA
     return true;
 }
 
+void setLilyPondPlaybackSounds(mu::engraving::MasterScore* score)
+{
+    using mu::engraving::InstrChannel;
+    // LilyPond lead sheets come without MIDI instrument assignments. A
+    // sustained flute separates the melody from the piano accompaniment.
+    constexpr int flute = 73; // General MIDI program, zero-based
+    constexpr int acousticGrandPiano = 0;
+    constexpr int chordVolume = 62;
+    for (auto* part : score->parts()) {
+        auto* instrument = part->instrument();
+        part->setMidiProgram(flute, 0);
+        part->updateHarmonyChannels(false);
+        const auto harmony = instrument->channelIdx(muse::String::fromUtf8(InstrChannel::HARMONY_NAME));
+        if (harmony != -1) {
+            // Harmony creation has already copied the channel into the MIDI
+            // mapping. Its mixer link propagates changes back to the score.
+            auto* channel = instrument->playbackChannel(harmony, score);
+            channel->setBank(0);
+            channel->setProgram(acousticGrandPiano);
+            channel->setVolume(chordVolume);
+        }
+    }
+}
+
 void spaceParenthesizedMetronomeMarks(mu::engraving::MasterScore* score)
 {
     using namespace mu::engraving;
@@ -322,6 +348,7 @@ muse::Ret importMusicXml(mu::engraving::MasterScore* score, StreamDevice& device
         score, muse::String::fromStdString(info.name), data));
     if (result && applyLilyPondEngraving(score, data)) {
         spaceParenthesizedMetronomeMarks(score);
+        setLilyPondPlaybackSounds(score);
         const auto mode = initialMeasureNumbering(data);
         using mu::engraving::Sid;
         if (mode == "none") {

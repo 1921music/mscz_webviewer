@@ -86,6 +86,32 @@ for (const offline of [false, true]) {
     }, tera)
     await expect(page.locator('#pages')).toContainText('A Tune')
 
+    if (process.env.MSCZ_PLAYBACK !== 'OFF') {
+      const audio = await page.evaluate(async () => {
+        const { score, playback } = window.__mscz
+        const { parts } = score.playbackTimeline()
+        await playback.ensureWorker()
+        const mixer = playback.mixer.map(part => ({ ...part }))
+        const soloEnergy = async index => {
+          await playback.request('mix', mixer.map((part, i) => ({ ...part, solo: i === index })))
+          await playback.request('reset')
+          const { left, right } = await playback.request('render')
+          return left.reduce((sum, value) => sum + value ** 2, 0) +
+            right.reduce((sum, value) => sum + value ** 2, 0)
+        }
+        try {
+          return { parts, melody: await soloEnergy(0), harmony: await soloEnergy(1) }
+        } finally {
+          playback.stop()
+        }
+      })
+      expect(audio.parts.map(part => part.kind)).toEqual(['instrument', 'harmony'])
+      expect(audio.parts.map(part => part.channels[0][1])).toEqual([73, 0])
+      expect(audio.parts[1].volume).toBeLessThan(audio.parts[0].volume)
+      expect(audio.melody).toBeGreaterThan(0)
+      expect(audio.harmony).toBeGreaterThan(0)
+    }
+
     await picker.setInputFiles(file('book.ly', book))
     const dialog = page.locator('#lilypondBookDialog')
     await expect(dialog).toBeVisible()
