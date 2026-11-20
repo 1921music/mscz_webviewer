@@ -4,6 +4,7 @@
 use crate::{Result, check};
 use std::collections::BTreeMap;
 use std::fmt::Write;
+use tera::{Context, Tera};
 
 type Fields<'a> = BTreeMap<&'a str, &'a str>;
 
@@ -40,42 +41,6 @@ fn string_literal(source: &str) -> Result<String> {
         result.push(escaped);
     }
     Err("Unclosed OpenBook metadata string".into())
-}
-
-fn parts(mut body: &str) -> Result<Fields<'_>> {
-    let mut sections = BTreeMap::new();
-    while let Some((_, directive)) = body.split_once("{%") {
-        let (directive, music) = directive.split_once("%}").ok_or("Unclosed Tera tag")?;
-        let Some(condition) = directive.trim().strip_prefix("if") else {
-            return Err(format!(
-                "Unsupported OpenBook Tera tag: {}",
-                directive.trim()
-            ));
-        };
-        let label = condition
-            .trim()
-            .strip_prefix("part")
-            .and_then(|s| s.trim().strip_prefix("=="))
-            .and_then(|s| s.trim().strip_prefix('"'))
-            .and_then(|s| s.strip_suffix('"'))
-            .ok_or("Expected an OpenBook part condition")?;
-        let (section, closing) = music.split_once("{%").ok_or("Missing Tera endif")?;
-        let (closing, rest) = closing.split_once("%}").ok_or("Unclosed Tera endif")?;
-        check(
-            closing.trim() == "endif",
-            "Nested Tera directives are unsupported",
-        )?;
-        check(
-            !section.contains("{{"),
-            "Tera expressions in song parts are unsupported",
-        )?;
-        check(
-            sections.insert(label, section).is_none(),
-            format!("Duplicate OpenBook part {label}"),
-        )?;
-        body = rest;
-    }
-    Ok(sections)
 }
 
 fn quoted(output: &mut String, text: &str) {
@@ -143,12 +108,21 @@ pub fn render(source: &str) -> Result<String> {
     let composer = get("composer")?;
     let poet = get("poet")?;
     let heb = attributes.get("heb").is_some_and(|s| *s == "true");
-    let sections = parts(body)?;
+    let mut tera = Tera::default();
+    let template = "song.ly.tera";
+    tera.add_raw_template(template, body)
+        .map_err(|error| format!("Could not compile OpenBook template: {error}"))?;
     let part = |name: &str| {
-        sections
-            .get(name)
-            .copied()
-            .ok_or_else(|| format!("Missing OpenBook part {name}"))
+        let mut context = Context::new();
+        context.insert("part", name);
+        let music = tera
+            .render(template, &context)
+            .map_err(|error| format!("Could not render OpenBook part {name}: {error}"))?;
+        check(
+            !music.trim().is_empty(),
+            format!("Empty or missing OpenBook part {name}"),
+        )?;
+        Ok::<_, String>(music)
     };
 
     let mut ly = String::from("\\bookpart {\n");
@@ -202,10 +176,10 @@ pub fn render(source: &str) -> Result<String> {
     }
 
     if enabled("doOwn") {
-        ly.push_str(part("Own")?);
+        ly.push_str(&part("Own")?);
     } else {
         if enabled("doPrep") {
-            ly.push_str(part("Prep")?);
+            ly.push_str(&part("Prep")?);
         }
         ly.push_str("\n\\score { <<\n");
         if enabled("doChords") {
@@ -241,7 +215,7 @@ pub fn render(source: &str) -> Result<String> {
         ly.push_str(">> }\n");
     }
     if enabled("doExtra") {
-        ly.push_str(part("Extra")?);
+        ly.push_str(&part("Extra")?);
     }
 
     if let Some(copyright) = get("copyright")? {

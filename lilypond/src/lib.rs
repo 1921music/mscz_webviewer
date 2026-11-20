@@ -1,11 +1,12 @@
 mod lilypond;
 mod model;
-mod openbook;
 mod musicxml;
 mod score;
 mod syntax;
 #[cfg(target_arch = "wasm32")]
 mod wasm;
+#[cfg(target_arch = "wasm32")]
+mod wasm_bridge;
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -105,9 +106,4 @@ pub fn convert(source: &str, options: Options<'_>) -> Result<String> {
     let mut score = lilypond::read_score(&tokens)?;
     let plan = score::plan(&mut score, options.page_breaks)?;
     musicxml::write(&score, &plan, options.title, options.measure_numbers)
-}
-
-/// Convert an individual OpenBook song using its declared default version.
-pub fn convert_openbook(source: &str, options: Options<'_>) -> Result<String> {
-    convert(&openbook::render(source)?, options)
 }

@@ -1,24 +1,41 @@
 // SPDX-License-Identifier: GPL-3.0-only
-export async function loadLilyPond (binary) {
+async function loadWasm (filename, binary) {
   if (!binary) {
-    const response = await fetch(new URL('./lilypond.wasm', import.meta.url))
-    if (!response.ok) throw new Error('Could not load the LilyPond converter')
+    const response = await fetch(new URL(filename, import.meta.url))
+    if (!response.ok) throw new Error('Could not load ' + filename)
     binary = await response.arrayBuffer()
   }
   const { instance } = await WebAssembly.instantiate(await binary)
-  const { memory, lilypond_input, lilypond_convert } = instance.exports
+  return instance.exports
+}
+
+function render (wasm, operation) {
+  const { memory, lilypond_input } = wasm
   const decoder = new TextDecoder()
-  return (source, { tera = false, measureNumbers } = {}) => {
-    const numbering = measureNumbers === 'system' ? 1 : measureNumbers === 'none' ? 2 : 0
+  return (source, ...args) => {
     const input = lilypond_input(source.byteLength)
     new Uint8Array(memory.buffer, input, source.byteLength).set(source)
-    const output = lilypond_convert(Number(tera), numbering)
+    const output = operation(...args)
     const header = new DataView(memory.buffer, output, 5)
     const length = header.getUint32(0, true)
     const bytes = new Uint8Array(memory.buffer, output + 5, length - 5)
     if (header.getUint8(4)) throw new Error(decoder.decode(bytes))
     return bytes.slice()
   }
+}
+
+export async function loadLilyPond (binary) {
+  const wasm = await loadWasm('./lilypond.wasm', binary)
+  const convert = render(wasm, wasm.lilypond_convert)
+  return (source, { measureNumbers } = {}) => {
+    const numbering = measureNumbers === 'system' ? 1 : measureNumbers === 'none' ? 2 : 0
+    return convert(source, numbering)
+  }
+}
+
+export async function loadLilyPondTera (binary) {
+  const wasm = await loadWasm('./lilypond-tera.wasm', binary)
+  return render(wasm, wasm.lilypond_render_template)
 }
 
 // Book and entry boundaries match the native CLI and the OpenBook source

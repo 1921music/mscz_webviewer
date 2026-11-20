@@ -4,9 +4,9 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { loadLilyPond, openBookEntries } from '../web/lilypond.mjs'
+import { loadLilyPond, loadLilyPondTera, openBookEntries } from '../web/lilypond.mjs'
 
 const execFile = promisify(execFileCallback)
 const encode = new TextEncoder()
@@ -45,6 +45,7 @@ try {
 console.log('WASM .ly byte-identical:', entries.length - failed, '/', entries.length)
 
 if (templateDir) {
+  const renderTemplate = await loadLilyPondTera(await readFile(join(dirname(wasm), 'lilypond-tera.wasm')))
   const templates = (await readdir(templateDir, { recursive: true })).filter(path => path.endsWith('.ly.tera'))
   if (templates.length !== entries.length) {
     console.error('Template count:', templates.length, 'Expected:', entries.length)
@@ -54,7 +55,7 @@ if (templateDir) {
   for (const template of templates) {
     try {
       const raw = await readFile(join(templateDir, template))
-      const xml = convert(raw, { tera: true, measureNumbers: 'system' })
+      const xml = convert(renderTemplate(raw), { measureNumbers: 'system' })
       const key = hash(xml)
       const count = expected.get(key)
       if (!count) throw new Error('No remaining byte-identical native MusicXML')

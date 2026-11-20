@@ -16,7 +16,7 @@ doVoice = true
 doChords = true
 doLyrics = true
 #}
-{% if part == "VoiceFake" %}{ c4 d e f | }{% endif %}
+{% if part == "VoiceFake" %}{ {% for pitch in ["c4", "d", "e", "f"] %}{{ pitch }} {% endfor %}| }{% endif %}
 {% if part == "ChordsFake" %}\chordmode { c1 | }{% endif %}
 {% if part == "LyricsFake" %}\lyricmode { one two three four }{% endif %}`
 const book = String.raw`
@@ -48,10 +48,21 @@ for (const offline of [false, true]) {
   test('LilyPond import and native MSCZ rendering over ' + (offline ? 'file://' : 'HTTP'), async ({ page, context }) => {
     const errors = []
     let converterRequests = 0
+    let teraRequests = 0
+    await page.addInitScript(() => {
+      window.teraInstantiations = 0
+      const instantiate = WebAssembly.instantiate
+      WebAssembly.instantiate = async (...args) => {
+        const result = await instantiate(...args)
+        if ((result.instance || result).exports.lilypond_render_template) window.teraInstantiations++
+        return result
+      }
+    })
     page.on('pageerror', e => errors.push(e.message))
     await context.route('**/*', route => {
       const url = route.request().url()
       if (url.endsWith('/lilypond.wasm')) converterRequests++
+      if (url.endsWith('/lilypond-tera.wasm')) teraRequests++
       if (/^(data:|blob:|file:)/.test(url) || (!offline && url.startsWith('http://127.0.0.1:8766/'))) return route.continue()
       errors.push(url)
       return route.abort()
@@ -74,6 +85,8 @@ for (const offline of [false, true]) {
     await picker.setInputFiles(file('score.ly', simple))
     await expect(status).toContainText('drawn in')
     expect((await notation(page)).fingerprint).not.toEqual(before.fingerprint)
+    expect(teraRequests).toBe(0)
+    expect(await page.evaluate(() => window.teraInstantiations)).toBe(0)
 
     await picker.setInputFiles(file('bad.ly', '\\score {}'))
     await expect(status).toContainText('No music staff or chords')
@@ -124,6 +137,8 @@ for (const offline of [false, true]) {
     await expect(status).toContainText('drawn in')
     expect(await notation(page)).toEqual(before)
     expect(converterRequests).toBe(offline ? 0 : 1)
+    expect(teraRequests).toBe(offline ? 0 : 1)
+    expect(await page.evaluate(() => window.teraInstantiations)).toBe(1)
     expect(errors).toEqual([])
   })
 }

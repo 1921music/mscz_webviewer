@@ -80,3 +80,8 @@ The LilyPond markup command signatures follow [python-ly
 contributors, under GPL-3.0-or-later. The OpenBook lead-sheet assembly follows
 [book-openbook](https://github.com/veltzer/book-openbook) by Mark Veltzer and
 contributors, under GPL-3.0. Song files are supplied by the user.
+
+The optional OpenBook template module includes [Tera 2.4.0](https://github.com/Keats/tera)
+and [Serde 1.0.229](https://github.com/serde-rs/serde). Their MIT license notices
+are in [lilypond/tera/NOTICE.txt](lilypond/tera/NOTICE.txt) and are included in
+the standalone HTML.

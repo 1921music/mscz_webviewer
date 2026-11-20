@@ -105,7 +105,7 @@
 
 <script type="module">
 import { load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED } from './mscz.js'
-import { loadLilyPond, openBookEntries } from './lilypond.mjs'
+import { loadLilyPond, loadLilyPondTera, openBookEntries } from './lilypond.mjs'
 import { downloadScorePdf } from './pdf-export.js'
 import { defaultFontResolver } from './font-resolver.js'
 // PLAYBACK_BEGIN
@@ -273,6 +273,7 @@ function render () {
 }
 
 let lilypondConverter
+let lilypondTera
 
 async function selectLilyPondEntry (entries) {
   const dialog = document.getElementById('lilypondBookDialog')
@@ -291,7 +292,18 @@ async function openScore (bytes, name) {
 
   const tera = /\.ly\.tera$/i.test(name)
   let source = bytes
-  if (!tera) {
+  if (tera) {
+    lilypondTera ??= loadLilyPondTera().catch(error => {
+      lilypondTera = undefined
+      throw error
+    })
+    try {
+      source = (await lilypondTera)(bytes)
+    } catch (error) {
+      if (error instanceof WebAssembly.RuntimeError) lilypondTera = undefined
+      throw error
+    }
+  } else {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
     const entries = openBookEntries(text)
     if (entries.length) {
@@ -307,7 +319,7 @@ async function openScore (bytes, name) {
   const convert = await lilypondConverter
   let xml
   try {
-    xml = convert(source, { tera, measureNumbers: 'system' })
+    xml = convert(source, { measureNumbers: 'system' })
   } catch (error) {
     // A trapped WASM call can leave the instance in an unusable state.
     if (error instanceof WebAssembly.RuntimeError) lilypondConverter = undefined
