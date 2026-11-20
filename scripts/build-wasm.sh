@@ -57,6 +57,8 @@ if [ "${1:-}" = "--errors" ]; then
     exit 0
 fi
 
+mise exec -- rustup target add wasm32-unknown-unknown || exit 1
+
 {
     # emcmake puts the emscripten toolchain file in place; everything else is
     # the same configuration Phase 2 uses.

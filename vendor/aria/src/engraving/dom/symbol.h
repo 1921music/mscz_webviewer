@@ -64,6 +64,9 @@ public:
     double symAngle() const { return m_symAngle; }
     AsciiStringView symName() const;
 
+    bool autoplaceAsDirection() const { return m_autoplaceAsDirection; }
+    void setAutoplaceAsDirection(bool enabled) { m_autoplaceAsDirection = enabled; }
+
     String accessibleInfo() const override;
 
     int subtype() const override { return int(m_sym); }
@@ -83,6 +86,7 @@ protected:
     std::shared_ptr<IEngravingFont> m_scoreFont = nullptr;
     double m_symbolsSize =  1.0;
     double m_symAngle = 0.0;
+    bool m_autoplaceAsDirection = false;
 };
 
 //---------------------------------------------------------

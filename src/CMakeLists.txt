@@ -170,6 +170,29 @@ if (EMSCRIPTEN)
     # is then a delivery decision rather than a build one.
     set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
 
+    # LilyPond is a separate module, fetched only when opening a LilyPond file.
+    find_program(MSCZ_MISE_EXECUTABLE mise HINTS "$ENV{HOME}/.local/bin" REQUIRED)
+    set(LILYPOND_DIR "${CMAKE_SOURCE_DIR}/lilypond")
+    file(GLOB LILYPOND_SOURCES CONFIGURE_DEPENDS "${LILYPOND_DIR}/src/*.rs")
+    set(LILYPOND_WASM "${MSCZ_WEB_DIR}/lilypond.wasm")
+    set(LILYPOND_TARGET "${CMAKE_BINARY_DIR}/rust-target")
+    add_custom_command(
+        OUTPUT "${LILYPOND_WASM}"
+        COMMAND "${MSCZ_MISE_EXECUTABLE}" exec -- cargo build --locked --offline --release
+                --target wasm32-unknown-unknown --target-dir "${LILYPOND_TARGET}"
+                --manifest-path "${LILYPOND_DIR}/Cargo.toml"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${LILYPOND_TARGET}/wasm32-unknown-unknown/release/lilypond_musicxml.wasm"
+                "${LILYPOND_WASM}"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        DEPENDS ${LILYPOND_SOURCES} "${LILYPOND_DIR}/Cargo.toml" "${LILYPOND_DIR}/Cargo.lock"
+                "${CMAKE_SOURCE_DIR}/.mise.toml"
+        COMMENT "Building the LilyPond WebAssembly converter"
+        VERBATIM
+    )
+    add_custom_target(lilypond_wasm ALL DEPENDS "${LILYPOND_WASM}")
+    configure_file("${CMAKE_SOURCE_DIR}/web/lilypond.mjs" "${MSCZ_WEB_DIR}/lilypond.mjs" COPYONLY)
+
     # Select/copy assets at configure time. Track inputs so rebuilding after
     # a page, sound bank or notice edit also regenerates the standalone HTML.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -213,7 +236,8 @@ if (EMSCRIPTEN)
         COMMAND ${Python3_EXECUTABLE} -I
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
                 --web "${MSCZ_WEB_DIR}"
-        DEPENDS mscz_wasm mscz_resource_manifest ${MSCZ_PLAYBACK_DEPENDS}
+        DEPENDS mscz_wasm mscz_resource_manifest lilypond_wasm "${LILYPOND_WASM}"
+                "${MSCZ_WEB_DIR}/lilypond.mjs" ${MSCZ_PLAYBACK_DEPENDS}
                 "${MSCZ_RESOURCE_MANIFEST}"
                 "${MSCZ_WEB_DIR}/index.html" "${MSCZ_WEB_DIR}/mscz.js"
                 "${MSCZ_WEB_DIR}/text-fonts.js"

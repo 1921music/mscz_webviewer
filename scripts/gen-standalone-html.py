@@ -58,6 +58,11 @@ def main():
                         f"const {{ {imports} }} = await import(await embeddedModule())")
     html = replace_once(html, "load({ base: '.', textFonts })", "load({ ...await embeddedOptions(), textFonts })")
 
+    lilypond = module_url((web / "lilypond.mjs").read_text(encoding="utf-8"))
+    html = replace_once(html, "from './lilypond.mjs'", f"from '{lilypond}'")
+    html = replace_once(html, "loadLilyPond().catch",
+                        "loadLilyPond(decodeEmbedded(lilypondAsset)).catch")
+
     resources = []
     names = set()
     index = json.loads((web / "index.json").read_text(encoding="utf-8"))
@@ -69,7 +74,8 @@ def main():
         names.add(entry["name"])
         resources.append({"name": entry["name"], "data": compressed(path.read_bytes())})
     payload = {"module": compressed(wrapper.encode("utf-8")),
-               "wasm": compressed((web / "mscz-engine.wasm").read_bytes()), "resources": resources}
+               "wasm": compressed((web / "mscz-engine.wasm").read_bytes()),
+               "lilypond": compressed((web / "lilypond.wasm").read_bytes()), "resources": resources}
     if "import { attachPlayback }" in html:
         playback = module_url((web / "playback.js").read_text(encoding="utf-8"))
         ui = replace_once((web / "playback-ui.js").read_text(encoding="utf-8"),
@@ -91,6 +97,7 @@ def main():
     bootstrap = """
 // All engine assets are in this document. Reading a score uses the File API.
 let embeddedPayload
+let lilypondAsset
 function readEmbeddedPayload () {
   if (!embeddedPayload) {
     const element = document.getElementById('mscz-embedded')
@@ -120,6 +127,7 @@ async function embeddedOptions () {
   const payload = readEmbeddedPayload()
   const wasmBinary = await decodeEmbedded(payload.wasm)
   delete payload.wasm
+  lilypondAsset = payload.lilypond
   const resources = []
   for (const resource of payload.resources) {
     resources.push({ name: resource.name, bytes: await decodeEmbedded(resource.data) })
