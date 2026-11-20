@@ -99,8 +99,10 @@ The HTML contains the JavaScript, WASM engine, fonts, and other required resourc
 
 Open LilyPond lead sheets as `.ly` or individual OpenBook `.ly.tera` files.
 A complete OpenBook `.ly` offers a song picker. Templates use their declared
-default version. The converter runs locally. On the HTTP edition its WASM
-module is fetched when a LilyPond score is first opened.
+default version. The converter runs locally. The HTTP edition fetches the
+LilyPond WASM on the first LilyPond file. The separate Tera 2.4.0 WASM
+expands OpenBook patterns and loads only when a template is opened. The
+standalone HTML decodes and initializes that module at the same point.
 LilyPond lead sheets play with a flute melody and a quieter piano accompaniment.
 
 ### File sizes
@@ -109,14 +111,15 @@ Measured on November 21, 2026, with default EAS playback. MiB = 1,048,576 bytes;
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,408,536** | **4.20 MiB** |
+| **Complete standalone HTML** (`docs/index.html`) | **4,699,967** | **4.48 MiB** |
 | WASM engine (`mscz-engine.wasm`) | 4,931,776 | 4.70 MiB |
-| LilyPond converter WASM (`lilypond.wasm`) | 393,155 | 383.94 KiB |
+| LilyPond converter WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
+| Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
 | Engine JavaScript (`mscz-engine.js`) | 17,429 | 17.02 KiB |
 | JavaScript wrapper (`mscz.js`) | 8,632 | 8.43 KiB |
 | Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.20 MiB total includes both WASM modules, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.48 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
@@ -245,14 +248,15 @@ LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.l
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,408,536** | **4.20 MiB** |
+| **単一 HTML 全体**（`docs/index.html`） | **4,699,967** | **4.48 MiB** |
 | WASM 本体（`mscz-engine.wasm`） | 4,931,776 | 4.70 MiB |
-| LilyPond 変換 WASM (`lilypond.wasm`) | 393,155 | 383.94 KiB |
+| LilyPond 変換 WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
+| Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
 | エンジン JavaScript（`mscz-engine.js`） | 17,429 | 17.02 KiB |
 | JavaScript ラッパー（`mscz.js`） | 8,632 | 8.43 KiB |
 | フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.20 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.48 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
@@ -370,7 +374,9 @@ are presentation state, never score edits.
 
 ### LilyPond parity check
 
-The Rust converter builds for native and WebAssembly without registry crates.
+The core Rust converter builds for native and WebAssembly without registry
+crates. The separate OpenBook template WASM uses the locked Tera 2 and Serde
+crates. Cargo fetches these dependencies on the first web build.
 Use the [OpenBook](https://github.com/veltzer/book-openbook) project's
 rendered book and the corresponding directory of source templates.
 
