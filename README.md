@@ -105,18 +105,24 @@ expands OpenBook patterns and loads only when a template is opened. The
 standalone HTML decodes and initializes that module at the same point.
 LilyPond lead sheets play with a flute melody and a quieter piano accompaniment.
 
+Use **Show lyrics** to show or hide the lyrics and their connecting lines.
+**Score font** switches between the original appearance and MuseJazz for
+notation, chord symbols, and headings. The lyrics keep their source font.
+These settings affect the displayed score and saved PDF. **Keep layout**
+preserves the source's system breaks when changing appearance.
+
 ### File sizes
 
 Measured on November 21, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,699,967** | **4.48 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,931,776 | 4.70 MiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,702,081** | **4.48 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,933,134 | 4.70 MiB |
 | LilyPond converter WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
 | Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
-| Engine JavaScript (`mscz-engine.js`) | 17,429 | 17.02 KiB |
-| JavaScript wrapper (`mscz.js`) | 8,632 | 8.43 KiB |
+| Engine JavaScript (`mscz-engine.js`) | 17,533 | 17.12 KiB |
+| JavaScript wrapper (`mscz.js`) | 9,560 | 9.34 KiB |
 | Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
 The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.48 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
@@ -242,18 +248,21 @@ JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HT
 
 LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.ly.tera` で直接開けます。OpenBook全曲の `.ly` では曲を選択できます。変換はブラウザー内で行います。
 
+「Show lyrics」で歌詞を表示・非表示にできます。「Score font」で原譜とMuseJazzを切り替えられます。
+表示設定はPDFにも反映されます。
+
 ### ファイルサイズ
 
 2026-11-21 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,699,967** | **4.48 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,931,776 | 4.70 MiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,702,081** | **4.48 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,933,134 | 4.70 MiB |
 | LilyPond 変換 WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
 | Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
-| エンジン JavaScript（`mscz-engine.js`） | 17,429 | 17.02 KiB |
-| JavaScript ラッパー（`mscz.js`） | 8,632 | 8.43 KiB |
+| エンジン JavaScript（`mscz-engine.js`） | 17,533 | 17.12 KiB |
+| JavaScript ラッパー（`mscz.js`） | 9,560 | 9.34 KiB |
 | フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
 各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.48 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
