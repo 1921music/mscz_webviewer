@@ -45,6 +45,15 @@
     </select>
     <label><input type="checkbox" id="preserveSystemBreaks" checked disabled> Keep layout</label>
   </div>
+  <div role="group" aria-label="Score appearance">
+    <label><input type="checkbox" id="showLyrics" checked disabled> Show lyrics</label>
+    <label>Score font
+      <select id="scoreFont" disabled>
+        <option value="original">Original</option>
+        <option value="musejazz">MuseJazz</option>
+      </select>
+    </label>
+  </div>
   <div role="group" aria-label="Score zoom">
     <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
     <output id="zoomValue" aria-live="polite">100%</output>
@@ -150,6 +159,8 @@ savePdf.addEventListener('click', async () => {
     updateTransposeControls()
   }
 })
+const showLyrics = document.getElementById('showLyrics')
+const scoreFont = document.getElementById('scoreFont')
 let zoom = 100
 
 function updateZoom () {
@@ -190,6 +201,11 @@ function updateTransposeControls () {
   if (score) { document.getElementById('transposeSpelling').value = score.viewTransposeSpelling }
   document.getElementById('preserveSystemBreaks').disabled = !score || busy
   if (score && !busy) { document.getElementById('preserveSystemBreaks').checked = score.viewPreserveSystemBreaks }
+  showLyrics.disabled = scoreFont.disabled = !score || busy
+  if (score && !busy) {
+    showLyrics.checked = score.viewShowLyrics
+    scoreFont.value = score.viewScoreFont
+  }
   document.getElementById('file').disabled = !mscz || busy
 }
 
@@ -367,29 +383,42 @@ function adoptScore (next, name = 'score') {
   updateTransposeControls()
 }
 
-async function transposeTo (semitones, spelling = score?.viewTransposeSpelling, preserveSystemBreaks = score?.viewPreserveSystemBreaks) {
+async function changeScoreView (apply, pending, failure) {
   if (!score || busy) { return }
   // PLAYBACK_BEGIN
   playback?.stop()
   // PLAYBACK_END
   busy = true
   updateTransposeControls()
-  status.textContent = 'Transposing…'
+  status.textContent = pending
   // Let the busy state appear before the synchronous engine/layout work.
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
   try {
-    score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks)
+    apply()
     // PLAYBACK_BEGIN
     playback?.setScore(score, true)
     // PLAYBACK_END
     render()
   } catch (e) {
-    status.textContent = `Could not transpose: ${e.message}`
+    status.textContent = failure + ': ' + e.message
   } finally {
     busy = false
     updateTransposeControls()
   }
 }
+
+function transposeTo (semitones, spelling = score?.viewTransposeSpelling, preserveSystemBreaks = score?.viewPreserveSystemBreaks) {
+  return changeScoreView(() => score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks),
+    'Transposing\u2026', 'Could not transpose')
+}
+
+function updateAppearance () {
+  const appearance = { showLyrics: showLyrics.checked, font: scoreFont.value }
+  return changeScoreView(() => score.setViewAppearance(appearance),
+    'Updating appearance\u2026', 'Could not change appearance')
+}
+showLyrics.addEventListener('change', updateAppearance)
+scoreFont.addEventListener('change', updateAppearance)
 
 document.getElementById('transposeDown').addEventListener('click', () => transposeTo(score.viewTransposeSemitones - 1))
 document.getElementById('transposeUp').addEventListener('click', () => transposeTo(score.viewTransposeSemitones + 1))

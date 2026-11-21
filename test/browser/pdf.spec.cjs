@@ -25,7 +25,7 @@ async function network (context, { failFont = false } = {}) {
   })
   return { seen, unexpected }
 }
-async function open (page, standalone, testInfo) {
+async function open (page, standalone, testInfo, scoreFile = path.join(root, 'test/pdf.musicxml')) {
   let url = 'http://127.0.0.1:8766/'
   if (standalone) {
     const html = testInfo.outputPath('isolated/index.html')
@@ -36,7 +36,7 @@ async function open (page, standalone, testInfo) {
   await page.goto(url)
   await expect(page.locator('#file')).toBeEnabled({ timeout: 45000 })
   await expect(page.locator('#savePdf')).toBeDisabled()
-  await page.locator('#file').setInputFiles(path.join(root, 'test/pdf.musicxml'))
+  await page.locator('#file').setInputFiles(scoreFile)
   await expect(page.locator('#savePdf')).toBeEnabled()
 }
 
@@ -190,3 +190,77 @@ for (const standalone of [false, true]) {
     expect(unexpected).toEqual([])
   })
 }
+
+test('Score appearance is reversible, composes with transpose, and is reflected in PDF', async ({ page, context }, testInfo) => {
+  const { unexpected } = await network(context)
+  const source = String.raw`\bookpart {
+    \markup \fill-line { \larger "Appearance PDF" }
+    \score { <<
+      \new Staff \new Voice = "melody" { c4 d e f | }
+      \new ChordNames \chordmode { c1 | }
+      \new Lyrics \lyricsto "melody" { \lyricmode { testSyllable -- verse __ _ } }
+    >> }
+  }`
+  await open(page, true, testInfo, { name: 'appearance.ly', mimeType: 'text/plain', buffer: Buffer.from(source) })
+  const lyrics = page.locator('#showLyrics')
+  const font = page.locator('#scoreFont')
+  const pdf = page.locator('#savePdf')
+  const lyricText = 'testSyllable'
+  const pageSvg = () => page.evaluate(() => window.__mscz.score.pageSvg(0, { symbols: 0, fonts: 0 }))
+  const fingerprint = () => page.evaluate(() => window.__mscz.score.layoutFingerprint())
+  const lyricFont = svg => page.evaluate(({ svg, lyricText }) => {
+    const root = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    const lyric = [...root.querySelectorAll('text')].find(item => item.textContent.includes(lyricText))
+    return lyric.closest('[font-family]').getAttribute('font-family').replace(/mscz-text-\d+-/g, '')
+  }, { svg, lyricText })
+  const original = await fingerprint()
+  const normalSvg = await pageSvg()
+  expect(normalSvg).toContain(lyricText)
+  expect(normalSvg).not.toContain('MuseJazz')
+  await expect(lyrics).toBeChecked()
+  await expect(font).toHaveValue('original')
+
+  await font.selectOption('musejazz')
+  await expect(pdf).toBeEnabled()
+  const jazzSvg = await pageSvg()
+  expect(jazzSvg).toContain('MuseJazz')
+  expect(jazzSvg).toContain(lyricText)
+  expect(await lyricFont(jazzSvg)).toBe(await lyricFont(normalSvg))
+
+  await lyrics.uncheck()
+  await expect(pdf).toBeEnabled()
+  const hiddenSvg = await pageSvg()
+  expect(hiddenSvg).not.toContain(lyricText)
+  expect(hiddenSvg).toContain('MuseJazz')
+
+  await page.locator('#transposeUp').click()
+  await expect(page.locator('#transposeValue')).toHaveText('+1 semitone')
+  await expect(lyrics).not.toBeChecked()
+  await expect(font).toHaveValue('musejazz')
+  await expect(pdf).toBeEnabled()
+  const downloaded = page.waitForEvent('download')
+  await pdf.click()
+  await expect(page.locator('#status')).toContainText('PDF saved', { timeout: 45000 })
+  const filename = testInfo.outputPath('appearance.pdf')
+  await (await downloaded).saveAs(filename)
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(fs.readFileSync(filename)), useSystemFonts: false }).promise
+  let text = ''
+  for (let i = 1; i <= doc.numPages; i++) {
+    const content = await (await doc.getPage(i)).getTextContent()
+    text += content.items.map(item => item.str).join('')
+  }
+  await doc.destroy()
+  expect(text).not.toContain(lyricText)
+  expect(text).toContain('Appearance PDF')
+  expect(fs.readFileSync(filename).toString('latin1')).toMatch(/MuseJazz/)
+  expect(unexpected).toEqual([])
+
+  await page.locator('#transposeReset').click()
+  await expect(page.locator('#transposeValue')).toHaveText('Original key')
+  await font.selectOption('original')
+  await expect(pdf).toBeEnabled()
+  await lyrics.check()
+  await expect(pdf).toBeEnabled()
+  expect(await fingerprint()).toBe(original)
+})

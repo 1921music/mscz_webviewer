@@ -24,6 +24,7 @@
 #include "engraving/dom/image.h"
 #include "engraving/dom/imageStore.h"
 #include "engraving/dom/staff.h"
+#include "engraving/dom/spanner.h"
 
 #ifndef NO_QT_SUPPORT
 #include <QBuffer>
@@ -45,6 +46,8 @@
 #include "engraving/dom/engravingitem.h"
 #include "engraving/dom/instrtemplate.h"
 #include "engraving/dom/masterscore.h"
+#include "engraving/iengravingfontsprovider.h"
+#include "engraving/style/style.h"
 #include "engraving/dom/mscore.h"
 #include "engraving/dom/page.h"
 #include "engraving/editing/transpose.h"
@@ -227,6 +230,8 @@ public:
     int pageCount = 0;
     int transposeSemitones = 0;
     bool preserveSystemBreaks = true;
+    bool showLyrics = true;
+    bool museJazz = false;
     TransposeSpelling transposeSpelling = TransposeSpelling::Readable;
 
     mu::engraving::rendering::IScoreRenderer* renderer() const
@@ -388,6 +393,69 @@ bool Session::viewPreserveSystemBreaks() const
 
 bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks, std::string& error)
 {
+    return rebuildView(semitones, spelling, preserveSystemBreaks, m_impl->showLyrics, m_impl->museJazz, error);
+}
+
+bool Session::viewShowLyrics() const
+{
+    return m_impl->showLyrics;
+}
+
+bool Session::viewMuseJazz() const
+{
+    return m_impl->museJazz;
+}
+
+bool Session::setViewAppearance(bool showLyrics, bool museJazz, std::string& error)
+{
+    return rebuildView(m_impl->transposeSemitones, m_impl->transposeSpelling, m_impl->preserveSystemBreaks,
+                       showLyrics, museJazz, error);
+}
+
+namespace {
+void applyMuseJazz(mu::engraving::MasterScore* score)
+{
+    using namespace mu::engraving;
+    auto style = score->style();
+    const muse::String symbolFont(u"MuseJazz");
+    const muse::String textFont(u"MuseJazz Text");
+    style.set(Sid::musicalSymbolFont, symbolFont);
+    style.set(Sid::musicalTextFont, textFont);
+    for (auto field : { Sid::titleFontFace, Sid::subTitleFontFace, Sid::composerFontFace,
+                        Sid::lyricistFontFace, Sid::tempoFontFace, Sid::rehearsalMarkFontFace,
+                        Sid::chordSymbolAFontFace, Sid::chordSymbolBFontFace }) {
+        style.set(field, textFont);
+    }
+    score->setEngravingFont(score->engravingFonts()->fontByName("MuseJazz"));
+    score->setStyle(style);
+    score->styleChanged();
+}
+
+void hideViewLyrics(mu::engraving::MasterScore* score)
+{
+    using namespace mu::engraving;
+    std::vector<EngravingItem*> lyrics;
+    score->scanElements([&](EngravingItem* item) {
+        if (item->isLyrics()) {
+            lyrics.push_back(item);
+        }
+    });
+    for (auto* item : lyrics) {
+        score->undoRemoveElement(item, /*removeLinked=*/false);
+    }
+    const auto spanners = score->spannerMap().map();
+    for (const auto& [tick, spanner] : spanners) {
+        if (spanner->type() == ElementType::PARTIAL_LYRICSLINE) {
+            score->undoRemoveElement(spanner, /*removeLinked=*/false);
+        }
+    }
+}
+}
+
+bool Session::rebuildView(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks,
+                          bool showLyrics, bool museJazz, std::string& error)
+{
+    using namespace mu::engraving;
     error.clear();
     if (spelling != TransposeSpelling::Preserve && spelling != TransposeSpelling::Readable) {
         error = "Unknown transposition spelling mode.";
@@ -398,29 +466,23 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool p
         return false;
     }
     if (semitones == m_impl->transposeSemitones && spelling == m_impl->transposeSpelling
-        && preserveSystemBreaks == m_impl->preserveSystemBreaks) {
+        && preserveSystemBreaks == m_impl->preserveSystemBreaks
+        && showLyrics == m_impl->showLyrics && museJazz == m_impl->museJazz) {
         return true;
     }
 
-    // Always start from the original source. Repeated half-step operations
-    // otherwise accumulate enharmonic spelling and layout changes. Build a
-    // candidate first so failed transpositions cannot damage the visible score.
+    // Replay the source to keep all view settings reversible and independent.
     auto candidate = openShared(m_impl->source, m_impl->info, error);
     if (!candidate) {
         return false;
     }
-    if (semitones != 0) {
-        using namespace mu::engraving;
-        auto score = candidate->m_impl->masterScore();
-        if (score->nstaves() == 0) {
-            error = "The score has no staves to transpose.";
-            return false;
-        }
-        static constexpr int intervals[] = { 0, 3, 4, 7, 8, 11, 12, 14, 17, 18, 21, 22, 25 };
-        auto interval = Interval::allIntervals[intervals[std::abs(semitones)]];
-        if (semitones < 0) { interval.flip(); }
-        spelling::TranspositionSpelling policy(score, interval.chromatic * 7 - interval.diatonic * 12);
-        if (preserveSystemBreaks) {
+    auto score = candidate->m_impl->masterScore();
+    if (semitones != 0 && score->nstaves() == 0) {
+        error = "The score has no staves to transpose.";
+        return false;
+    }
+    if (semitones != 0 || !showLyrics || museJazz) {
+        if (preserveSystemBreaks && semitones != 0) {
             std::vector<const MeasureBase*> pageEnds;
             for (const Page* page : score->pages()) {
                 auto last = page->systems().empty() ? nullptr : page->systems().back()->last();
@@ -431,10 +493,9 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool p
             }
             score->setPreservedPageEnds(pageEnds);
         }
-        score->startCmd(muse::TranslatableString("mscz_test", "Transpose display"));
+        score->startCmd(muse::TranslatableString("mscz_test", "Change score view"));
         if (preserveSystemBreaks) {
-            // Capture the freshly loaded source's systems, never the previous
-            // transposed view. Existing source locks and page breaks survive.
+            // Capture the source's systems before applying any display changes.
             for (const System* system : score->systems()) {
                 auto first = system->first();
                 if (first && (first->isMeasure() || first->isHBox()) && !system->isLocked()) {
@@ -442,18 +503,32 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool p
                 }
             }
         }
-        score->cmdSelectAll();
-        const bool ok = Transpose::transpose(score, TransposeMode::BY_INTERVAL,
-                                             semitones > 0 ? TransposeDirection::UP : TransposeDirection::DOWN,
-                                             Key::C, intervals[std::abs(semitones)], true, true, false);
-        if (ok) { policy.apply(spelling == TransposeSpelling::Readable); }
-        const bool engineError = MScore::_error != MsError::MS_NO_ERROR && !MScore::_errorIsWarning;
-        score->endCmd(!ok || engineError);
-        if (!ok || engineError) {
-            error = "The score cannot be transposed by that interval (a note may be out of range).";
-            return false;
+        if (semitones != 0) {
+            static constexpr int intervals[] = { 0, 3, 4, 7, 8, 11, 12, 14, 17, 18, 21, 22, 25 };
+            const auto intervalIndex = intervals[std::abs(semitones)];
+            auto interval = Interval::allIntervals[intervalIndex];
+            if (semitones < 0) { interval.flip(); }
+            spelling::TranspositionSpelling policy(score, interval.chromatic * 7 - interval.diatonic * 12);
+            score->cmdSelectAll();
+            const bool ok = Transpose::transpose(score, TransposeMode::BY_INTERVAL,
+                                                  semitones > 0 ? TransposeDirection::UP : TransposeDirection::DOWN,
+                                                  Key::C, intervalIndex, true, true, false);
+            if (ok) { policy.apply(spelling == TransposeSpelling::Readable); }
+            const bool engineError = MScore::_error != MsError::MS_NO_ERROR && !MScore::_errorIsWarning;
+            if (!ok || engineError) {
+                score->endCmd(true);
+                error = "The score cannot be transposed by that interval (a note may be out of range).";
+                return false;
+            }
+            score->deselectAll();
         }
-        score->deselectAll();
+        if (!showLyrics) {
+            hideViewLyrics(score);
+        }
+        if (museJazz) {
+            applyMuseJazz(score);
+        }
+        score->endCmd();
         score->setLayoutAll();
         score->doLayout();
         candidate->m_impl->pageCount = static_cast<int>(score->pages().size());
@@ -461,6 +536,8 @@ bool Session::setViewTranspose(int semitones, TransposeSpelling spelling, bool p
     candidate->m_impl->transposeSemitones = semitones;
     candidate->m_impl->transposeSpelling = spelling;
     candidate->m_impl->preserveSystemBreaks = preserveSystemBreaks;
+    candidate->m_impl->showLyrics = showLyrics;
+    candidate->m_impl->museJazz = museJazz;
     m_impl.swap(candidate->m_impl);
     return true;
 }

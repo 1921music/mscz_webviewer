@@ -151,6 +151,9 @@ if (EMSCRIPTEN)
         # emmalloc is the smaller allocator and we make few, large allocations.
         -sMALLOC=emmalloc
         -sALLOW_MEMORY_GROWTH=1
+        # Replaying MusicXML from a display operation nests the importer
+        # and its text metrics under the view-rebuild call.
+        -sSTACK_SIZE=524288
         -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8
         -sINCOMING_MODULE_JS_API=wasmBinary,locateFile,textFontBackend
         # A separate file mapping function index to mangled name. Nothing is

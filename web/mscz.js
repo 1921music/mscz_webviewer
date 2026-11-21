@@ -53,6 +53,8 @@ export class Mscz {
     this._open = c('mscz_open', 'number', ['number', 'number', 'string'])
     this._close = c('mscz_close', null, ['number'])
     this._pageCount = c('mscz_page_count', 'number', ['number'])
+    this._viewAppearance = c('mscz_view_appearance', 'number', ['number'])
+    this._setAppearance = c('mscz_set_view_appearance', 'number', ['number', 'number'])
     this._viewTranspose = c('mscz_view_transpose_semitones', 'number', ['number'])
     this._setViewTranspose = c('mscz_set_view_transpose_semitones', 'number', ['number', 'number'])
     this._viewSpelling = c('mscz_view_transpose_spelling', 'number', ['number'])
@@ -157,6 +159,24 @@ class Score {
     return JSON.parse(this.mscz._result())
   }
   // PLAYBACK_END
+
+  get viewShowLyrics () {
+    return (this.mscz._viewAppearance(this.id) & 1) !== 0
+  }
+
+  get viewScoreFont () {
+    return (this.mscz._viewAppearance(this.id) & 2) ? 'musejazz' : 'original'
+  }
+
+  setViewAppearance ({ showLyrics = this.viewShowLyrics, font = this.viewScoreFont } = {}) {
+    if (!this.id) { throw new Error('the score is closed') }
+    if (typeof showLyrics !== 'boolean') { throw new TypeError('showLyrics must be a boolean') }
+    if (font !== 'musejazz' && font !== 'original') { throw new RangeError('unknown score font') }
+    const flags = Number(showLyrics) | (font === 'musejazz' ? 2 : 0)
+    if (!this.mscz._setAppearance(this.id, flags)) {
+      throw new Error(this.mscz._lastError() || 'could not change score appearance')
+    }
+  }
 
   get viewTransposeSemitones () {
     if (!this.id) { throw new Error('the score is closed') }

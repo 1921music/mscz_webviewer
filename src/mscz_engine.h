@@ -87,6 +87,10 @@ public:
     bool viewPreserveSystemBreaks() const;
     bool setViewTranspose(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks, std::string& error);
 
+    bool viewShowLyrics() const;
+    bool viewMuseJazz() const;
+    bool setViewAppearance(bool showLyrics, bool museJazz, std::string& error);
+
     //! Renders one page to PNG at `dpi`.
     bool renderPage(int pageIndex, int dpi, PageImage& out, std::string& error) const;
 
@@ -135,6 +139,8 @@ private:
     Session(const Session&) = delete;
     Session& operator=(const Session&) = delete;
 
+    bool rebuildView(int semitones, TransposeSpelling spelling, bool preserveSystemBreaks,
+                     bool showLyrics, bool museJazz, std::string& error);
     std::unique_ptr<Impl> m_impl;
 };
 
