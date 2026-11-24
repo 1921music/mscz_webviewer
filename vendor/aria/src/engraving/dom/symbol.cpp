@@ -61,6 +61,7 @@ Symbol::Symbol(const Symbol& s)
     m_scoreFont   = s.m_scoreFont;
     m_symbolsSize = s.m_symbolsSize;
     m_symAngle    = s.m_symAngle;
+    m_autoplaceAsDirection = s.m_autoplaceAsDirection;
 }
 
 void Symbol::setSym(SymId s, const std::shared_ptr<IEngravingFont>& sf)

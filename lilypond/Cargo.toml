@@ -1,0 +1,18 @@
+[package]
+name = "lilypond-musicxml"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+description = "Convert the LilyPond lead sheets supported by the OpenBook prototype to MusicXML"
+
+[dependencies]
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

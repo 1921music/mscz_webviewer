@@ -19,6 +19,8 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
+#include <limits>
+
 #include "tdraw.h"
 
 #include "defer.h"
@@ -1585,14 +1587,24 @@ void TDraw::draw(const GlissandoSegment* item, Painter* painter, const PaintOpti
     } else if (glissando->glissandoType() == GlissandoType::WAVY) {
         RectF b = item->symBbox(SymId::wiggleGlissando);
         double a  = item->symAdvance(SymId::wiggleGlissando);
-        int n    = static_cast<int>(l / a);          // always round down (truncate) to avoid overlap
-        double x  = (l - n * a) * 0.5;     // centre line in available space
-        SymIdList ids;
-        for (int i = 0; i < n; ++i) {
-            ids.push_back(SymId::wiggleGlissando);
+        // A music font without an advance for this glyph would give an
+        // unbounded repeat count. Draw the wave directly in that case.
+        if (a > 0.0 && l / a < std::numeric_limits<int>::max()) {
+            int n = static_cast<int>(l / a);
+            double x = (l - n * a) * 0.5;
+            SymIdList ids(n, SymId::wiggleGlissando);
+            item->score()->engravingFont()->draw(ids, painter, item->magS(), PointF(x, -(b.y() + b.height() * 0.5)));
+        } else {
+            const int segments = std::max(2, static_cast<int>(l / (_spatium * 0.45)));
+            const double amplitude = _spatium * 0.15;
+            PainterPath wave;
+            wave.moveTo(0.0, 0.0);
+            for (int i = 1; i < segments; ++i) {
+                wave.lineTo(l * i / segments, i % 2 ? -amplitude : amplitude);
+            }
+            wave.lineTo(l, 0.0);
+            painter->drawPath(wave);
         }
-
-        item->score()->engravingFont()->draw(ids, painter, item->magS(), PointF(x, -(b.y() + b.height() * 0.5)));
     }
 
     if (glissando->showText()) {

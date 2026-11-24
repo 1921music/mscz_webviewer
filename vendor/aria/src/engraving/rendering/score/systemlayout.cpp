@@ -55,6 +55,7 @@
 #include "dom/spacer.h"
 #include "dom/staff.h"
 #include "dom/stafflines.h"
+#include "dom/symbol.h"
 #include "dom/system.h"
 #include "dom/tie.h"
 #include "dom/timesig.h"
@@ -1361,6 +1362,15 @@ void SystemLayout::layoutSystemElements(System* system, LayoutContext& ctx)
         TLayout::layoutItem(item, ctx);
     }
 
+    for (EngravingItem* symbol : elementsToLayout.autoplaceSymbols) {
+        TLayout::layoutItem(symbol, ctx);
+        // Reuse the glyph bbox at its own beat. Reset the vertical layout
+        // position so each pass resolves collisions from the same anchor.
+        auto* data = symbol->mutldata();
+        data->setPosY(0.0);
+        Autoplace::autoplaceSegmentElement(symbol, data, symbol->placeAbove());
+    }
+
     for (Image* image : elementsToLayout.images) {
         TLayout::layoutItem(image, ctx);
     }
@@ -1519,6 +1529,11 @@ void SystemLayout::collectElementsToLayout(Measure* measure, ElementsToLayout& e
                 break;
             case ElementType::TEMPO_TEXT:
                 elements.tempoText.push_back(toTempoText(item));
+                break;
+            case ElementType::SYMBOL:
+                if (toSymbol(item)->autoplaceAsDirection()) {
+                    elements.autoplaceSymbols.push_back(item);
+                }
                 break;
             case ElementType::IMAGE:
                 elements.images.push_back(toImage(item));

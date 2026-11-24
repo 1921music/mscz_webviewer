@@ -97,27 +97,43 @@ adds an optional real-score smoke test; that score is not copied into the repo.
 
 The HTML contains the JavaScript, WASM engine, fonts, and other required resources. No companion files need to be downloaded. Open scores from your device using the file picker or drag and drop. Loading a score from a URL requires a network connection.
 
+Open LilyPond lead sheets as `.ly` or individual OpenBook `.ly.tera` files.
+A complete OpenBook `.ly` offers a song picker. Templates use their declared
+default version. The converter runs locally. The HTTP edition fetches the
+LilyPond WASM on the first LilyPond file. The separate Tera 2.4.0 WASM
+expands OpenBook patterns and loads only when a template is opened. The
+standalone HTML decodes and initializes that module at the same point.
+LilyPond lead sheets play with a flute melody and a quieter piano accompaniment.
+
+Use **Show lyrics** to show or hide the lyrics and their connecting lines.
+**Score font** switches between the original appearance and MuseJazz for
+notation, chord symbols, and headings. The lyrics keep their source font.
+These settings affect the displayed score and saved PDF. **Keep layout**
+preserves the source's system breaks when changing appearance.
+
 ### File sizes
 
-Measured on November 10, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
+Measured on November 21, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,163,159** | **3.97 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,921,878 | 4.69 MiB |
-| Engine JavaScript (`mscz-engine.js`) | 17,307 | 16.90 KiB |
-| JavaScript wrapper (`mscz.js`) | 8,153 | 7.96 KiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,702,081** | **4.48 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,933,134 | 4.70 MiB |
+| LilyPond converter WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
+| Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
+| Engine JavaScript (`mscz-engine.js`) | 17,533 | 17.12 KiB |
+| JavaScript wrapper (`mscz.js`) | 9,560 | 9.34 KiB |
 | Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 3.97 MiB total includes the engine, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.48 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
 | Backend | Engine WASM | Engine gzip | Synth WASM + bank | Synth + bank gzip | Standalone HTML |
 |---|---:|---:|---:|---:|---:|
 | OFF | 4,834,399 | 1,819,318 | 0 | 0 | 3,807,380 |
-| EAS | 4,921,878 | 1,859,231 | 258,187 | 210,142 | 4,163,159 |
-| TSF_SF3 | 4,921,878 | 1,859,231 | 923,235 | 261,472 | 4,231,121 |
+| EAS | 4,931,377 | 1,859,231 | 258,187 | 210,142 | 4,408,352 |
+| TSF_SF3 | 4,931,377 | 1,859,231 | 923,235 | 261,472 | 4,231,121 |
 
 The synth columns include the embedded EAS bank or the separate SF3 bank, but
 exclude JavaScript. The standalone column includes all runtime assets.
@@ -230,19 +246,26 @@ MuseScore と MusicXML の楽譜をブラウザーで表示するビューアー
 
 JavaScript・WASM・フォントなどの必要な素材をすべて 1 個の HTML に内包しているため、別ファイルのダウンロードは不要です。端末内の楽譜をファイル選択またはドラッグ＆ドロップで開いてください。URL から楽譜を取得する場合は通信が必要です。
 
+LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.ly.tera` で直接開けます。OpenBook全曲の `.ly` では曲を選択できます。変換はブラウザー内で行います。
+
+「Show lyrics」で歌詞を表示・非表示にできます。「Score font」で原譜とMuseJazzを切り替えられます。
+表示設定はPDFにも反映されます。
+
 ### ファイルサイズ
 
-2026-11-10 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
+2026-11-21 時点、標準のEAS演奏機能を含む実測値です。MiB = 1,048,576 bytes、KiB = 1,024 bytes。
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,163,159** | **3.97 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,921,878 | 4.69 MiB |
-| エンジン JavaScript（`mscz-engine.js`） | 17,307 | 16.90 KiB |
-| JavaScript ラッパー（`mscz.js`） | 8,153 | 7.96 KiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,702,081** | **4.48 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,933,134 | 4.70 MiB |
+| LilyPond 変換 WASM (`lilypond.wasm`) | 370,414 | 361.73 KiB |
+| Tera 2 WASM (`lilypond-tera.wasm`) | 678,638 | 662.73 KiB |
+| エンジン JavaScript（`mscz-engine.js`） | 17,533 | 17.12 KiB |
+| JavaScript ラッパー（`mscz.js`） | 9,560 | 9.34 KiB |
 | フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**3.97 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.48 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
@@ -357,3 +380,18 @@ without replaying earlier note attacks or sustained voices. Attacks exactly at
 the chosen timestamp remain queued. Ordinary pause/resume without seeking still
 preserves buffered audio and held voices. Position, highlights, cursor and seeks
 are presentation state, never score edits.
+
+### LilyPond parity check
+
+The core Rust converter builds for native and WebAssembly without registry
+crates. The separate OpenBook template WASM uses the locked Tera 2 and Serde
+crates. Cargo fetches these dependencies on the first web build.
+Use the [OpenBook](https://github.com/veltzer/book-openbook) project's
+rendered book and the corresponding directory of source templates.
+
+```sh
+mise exec -- cargo build --release --locked --offline --manifest-path lilypond/Cargo.toml
+mise exec -- node scripts/check-lilypond-wasm.mjs \
+  /path/to/web/lilypond.wasm lilypond/target/release/lilypond-musicxml \
+  /path/to/out/tera/books/openbook.ly /path/to/src/openbook
+```

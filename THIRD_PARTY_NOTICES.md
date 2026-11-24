@@ -72,3 +72,16 @@ The audio licenses and provenance are retained in this repository. Selected
 notices are also copied to `playback-LICENSE.txt` in the HTTP payload; they are
 not displayed in the web application. No playback dependencies are shipped
 by OFF builds. Existing GPL-3.0-only terms for the complete viewer remain in place.
+
+## LilyPond converter
+
+The LilyPond markup command signatures follow [python-ly
+0.9.10](https://github.com/frescobaldi/python-ly), by Wilbert Berendsen and
+contributors, under GPL-3.0-or-later. The OpenBook lead-sheet assembly follows
+[book-openbook](https://github.com/veltzer/book-openbook) by Mark Veltzer and
+contributors, under GPL-3.0. Song files are supplied by the user.
+
+The optional OpenBook template module includes [Tera 2.4.0](https://github.com/Keats/tera)
+and [Serde 1.0.229](https://github.com/serde-rs/serde). Their MIT license notices
+are in [lilypond/tera/NOTICE.txt](lilypond/tera/NOTICE.txt) and are included in
+the standalone HTML.

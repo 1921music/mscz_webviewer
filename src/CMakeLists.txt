@@ -151,6 +151,9 @@ if (EMSCRIPTEN)
         # emmalloc is the smaller allocator and we make few, large allocations.
         -sMALLOC=emmalloc
         -sALLOW_MEMORY_GROWTH=1
+        # Replaying MusicXML from a display operation nests the importer
+        # and its text metrics under the view-rebuild call.
+        -sSTACK_SIZE=524288
         -sEXPORTED_RUNTIME_METHODS=cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8
         -sINCOMING_MODULE_JS_API=wasmBinary,locateFile,textFontBackend
         # A separate file mapping function index to mangled name. Nothing is
@@ -169,6 +172,37 @@ if (EMSCRIPTEN)
     # Nothing is baked into the wasm, which is the point -- what gets fetched
     # is then a delivery decision rather than a build one.
     set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
+
+    # Tera is separate from the LilyPond converter so plain .ly can skip it.
+    find_program(MSCZ_MISE_EXECUTABLE mise HINTS "$ENV{HOME}/.local/bin" REQUIRED)
+    set(LILYPOND_DIR "${CMAKE_SOURCE_DIR}/lilypond")
+    set(LILYPOND_TARGET "${CMAKE_BINARY_DIR}/rust-target")
+    file(GLOB LILYPOND_SOURCES CONFIGURE_DEPENDS "${LILYPOND_DIR}/src/*.rs")
+    file(GLOB TERA_SOURCES CONFIGURE_DEPENDS "${LILYPOND_DIR}/tera/src/*.rs")
+    function(mscz_rust_wasm output package directory)
+        add_custom_command(
+            OUTPUT "${output}"
+            COMMAND "${MSCZ_MISE_EXECUTABLE}" exec -- cargo build --locked --release
+                    --target wasm32-unknown-unknown --target-dir "${LILYPOND_TARGET}"
+                    --manifest-path "${directory}/Cargo.toml"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "${LILYPOND_TARGET}/wasm32-unknown-unknown/release/${package}.wasm"
+                    "${output}"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            DEPENDS ${ARGN} "${directory}/Cargo.toml" "${directory}/Cargo.lock"
+                    "${CMAKE_SOURCE_DIR}/.mise.toml"
+            COMMENT "Building ${package} WebAssembly"
+            VERBATIM
+        )
+    endfunction()
+    set(LILYPOND_WASM "${MSCZ_WEB_DIR}/lilypond.wasm")
+    set(TERA_WASM "${MSCZ_WEB_DIR}/lilypond-tera.wasm")
+    mscz_rust_wasm("${LILYPOND_WASM}" lilypond_musicxml "${LILYPOND_DIR}" ${LILYPOND_SOURCES})
+    mscz_rust_wasm("${TERA_WASM}" lilypond_tera "${LILYPOND_DIR}/tera"
+        ${TERA_SOURCES} "${LILYPOND_DIR}/src/wasm_bridge.rs")
+    add_custom_target(lilypond_wasm ALL DEPENDS "${LILYPOND_WASM}" "${TERA_WASM}")
+    configure_file("${CMAKE_SOURCE_DIR}/web/lilypond.mjs" "${MSCZ_WEB_DIR}/lilypond.mjs" COPYONLY)
+    configure_file("${LILYPOND_DIR}/tera/NOTICE.txt" "${MSCZ_WEB_DIR}/lilypond-tera-NOTICE.txt" COPYONLY)
 
     # Select/copy assets at configure time. Track inputs so rebuilding after
     # a page, sound bank or notice edit also regenerates the standalone HTML.
@@ -213,7 +247,9 @@ if (EMSCRIPTEN)
         COMMAND ${Python3_EXECUTABLE} -I
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
                 --web "${MSCZ_WEB_DIR}"
-        DEPENDS mscz_wasm mscz_resource_manifest ${MSCZ_PLAYBACK_DEPENDS}
+        DEPENDS mscz_wasm mscz_resource_manifest lilypond_wasm "${LILYPOND_WASM}" "${TERA_WASM}"
+                "${MSCZ_WEB_DIR}/lilypond-tera-NOTICE.txt"
+                "${MSCZ_WEB_DIR}/lilypond.mjs" ${MSCZ_PLAYBACK_DEPENDS}
                 "${MSCZ_RESOURCE_MANIFEST}"
                 "${MSCZ_WEB_DIR}/index.html" "${MSCZ_WEB_DIR}/mscz.js"
                 "${MSCZ_WEB_DIR}/text-fonts.js"

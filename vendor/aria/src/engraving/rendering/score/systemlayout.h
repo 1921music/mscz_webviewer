@@ -146,6 +146,7 @@ private:
         std::vector<EngravingItem*> playTechCapoStringTunTripletFeel;
         std::vector<RehearsalMark*> rehMarks;
         std::vector<TempoText*> tempoText;
+        std::vector<EngravingItem*> autoplaceSymbols;
         std::vector<Image*> images;
         std::vector<Parenthesis*> parenthesis;
         std::vector<Harmony*> harmonies;

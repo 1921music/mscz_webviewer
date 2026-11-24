@@ -4,7 +4,7 @@
 
   Part of mscz_test. Built on MuseScore-derived code; see vendor/aria/VENDOR.md.
 
-  Drop a .mscz or MusicXML score on the page and it is laid out and drawn, in the browser, with
+  Drop a MuseScore, MusicXML or LilyPond score on the page and it is laid out and drawn, in the browser, with
   nothing going to a server. Serve this directory over HTTP -- the module is an
   ES module, so file:// will not do:
 
@@ -13,7 +13,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>mscz_test — MuseScore / MusicXML in the browser</title>
+<title>mscz_test — MuseScore, MusicXML and LilyPond in the browser</title>
 <style>
   html { overflow-y: scroll; }
   body { font: 14px system-ui, sans-serif; margin: 0; background: #f4f4f5; color: #27272a; }
@@ -32,7 +32,7 @@
 <body>
 
 <header>
-  <input type="file" id="file" accept=".mscz,.musicxml,.xml,.mxl" disabled>
+  <input type="file" id="file" accept=".mscz,.musicxml,.xml,.mxl,.ly,.tera" disabled>
   <button id="savePdf" type="button" disabled title="Downloads PDF tools and fonts when needed. Internet connection required.">Save PDF</button>
   <div role="group" aria-label="Display transposition">
     <button id="transposeDown" type="button" disabled>− semitone</button>
@@ -44,6 +44,15 @@
       <option value="preserve">Preserve spelling</option>
     </select>
     <label><input type="checkbox" id="preserveSystemBreaks" checked disabled> Keep layout</label>
+  </div>
+  <div role="group" aria-label="Score appearance">
+    <label><input type="checkbox" id="showLyrics" checked disabled> Show lyrics</label>
+    <label>Score font
+      <select id="scoreFont" disabled>
+        <option value="original">Original</option>
+        <option value="musejazz">MuseJazz</option>
+      </select>
+    </label>
   </div>
   <div role="group" aria-label="Score zoom">
     <button id="zoomOut" type="button" aria-label="Zoom out">−</button>
@@ -60,7 +69,15 @@
   <span id="status">loading the engine…</span>
 </header>
 
-<div id="drop">or drop a .mscz, .musicxml, .xml or .mxl here</div>
+<div id="drop">or drop a MuseScore, MusicXML, .ly or .ly.tera file here</div>
+<dialog id="lilypondBookDialog" aria-labelledby="lilypondBookLabel">
+  <form method="dialog">
+    <label id="lilypondBookLabel" for="lilypondBookEntry">Choose a song</label>
+    <select id="lilypondBookEntry" style="display:block;max-width:80vw;margin:8px 0"></select>
+    <button type="submit" value="open">Open</button>
+    <button type="submit" value="cancel" formnovalidate>Cancel</button>
+  </form>
+</dialog>
 <div id="pages"></div>
 
 <!-- PLAYBACK_BEGIN -->
@@ -97,6 +114,7 @@
 
 <script type="module">
 import { load, SYMBOLS_FONT, SYMBOLS_PATH, FONTS_REFERENCE, FONTS_EMBED } from './mscz.js'
+import { loadLilyPond, loadLilyPondTera, openBookEntries } from './lilypond.mjs'
 import { downloadScorePdf } from './pdf-export.js'
 import { defaultFontResolver } from './font-resolver.js'
 // PLAYBACK_BEGIN
@@ -131,7 +149,7 @@ savePdf.addEventListener('click', async () => {
   updateTransposeControls()
   try {
     await downloadScorePdf(score, { fontResolver: pdfFonts, title: scoreName,
-      filename: `${scoreName.replace(/\.(mscz|musicxml|xml|mxl)$/i, '')}.pdf`,
+      filename: `${scoreName.replace(/\.(ly\.tera|ly|mscz|musicxml|xml|mxl)$/i, '')}.pdf`,
       onProgress: message => { status.textContent = message } })
     status.textContent = 'PDF saved (searchable text, embedded font subsets)'
   } catch (error) {
@@ -141,6 +159,8 @@ savePdf.addEventListener('click', async () => {
     updateTransposeControls()
   }
 })
+const showLyrics = document.getElementById('showLyrics')
+const scoreFont = document.getElementById('scoreFont')
 let zoom = 100
 
 function updateZoom () {
@@ -181,6 +201,11 @@ function updateTransposeControls () {
   if (score) { document.getElementById('transposeSpelling').value = score.viewTransposeSpelling }
   document.getElementById('preserveSystemBreaks').disabled = !score || busy
   if (score && !busy) { document.getElementById('preserveSystemBreaks').checked = score.viewPreserveSystemBreaks }
+  showLyrics.disabled = scoreFont.disabled = !score || busy
+  if (score && !busy) {
+    showLyrics.checked = score.viewShowLyrics
+    scoreFont.value = score.viewScoreFont
+  }
   document.getElementById('file').disabled = !mscz || busy
 }
 
@@ -263,6 +288,62 @@ function render () {
             + ` drawn in ${Math.round(performance.now() - start)} ms`
 }
 
+let lilypondConverter
+let lilypondTera
+
+async function selectLilyPondEntry (entries) {
+  const dialog = document.getElementById('lilypondBookDialog')
+  const select = document.getElementById('lilypondBookEntry')
+  select.replaceChildren(...entries.map((entry, index) => new Option(entry.title, index)))
+  dialog.returnValue = ''
+  dialog.showModal()
+  await new Promise(resolve => dialog.addEventListener('close', resolve, { once: true }))
+  const selected = dialog.returnValue === 'open' ? entries[Number(select.value)] : null
+  select.replaceChildren()
+  return selected
+}
+
+async function openScore (bytes, name) {
+  if (!/\.ly(?:\.tera)?$/i.test(name)) return mscz.open(bytes, name)
+
+  const tera = /\.ly\.tera$/i.test(name)
+  let source = bytes
+  if (tera) {
+    lilypondTera ??= loadLilyPondTera().catch(error => {
+      lilypondTera = undefined
+      throw error
+    })
+    try {
+      source = (await lilypondTera)(bytes)
+    } catch (error) {
+      if (error instanceof WebAssembly.RuntimeError) lilypondTera = undefined
+      throw error
+    }
+  } else {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    const entries = openBookEntries(text)
+    if (entries.length) {
+      const entry = await selectLilyPondEntry(entries)
+      if (!entry) return null
+      source = new TextEncoder().encode(text.slice(entry.start, entry.end))
+    }
+  }
+  lilypondConverter ??= loadLilyPond().catch(error => {
+    lilypondConverter = undefined
+    throw error
+  })
+  const convert = await lilypondConverter
+  let xml
+  try {
+    xml = convert(source, { measureNumbers: 'system' })
+  } catch (error) {
+    // A trapped WASM call can leave the instance in an unusable state.
+    if (error instanceof WebAssembly.RuntimeError) lilypondConverter = undefined
+    throw error
+  }
+  return mscz.open(xml, name.replace(/\.ly(?:\.tera)?$/i, '.musicxml'))
+}
+
 async function openFile (file) {
   if (!mscz || busy) { return }
   // PLAYBACK_BEGIN
@@ -272,7 +353,9 @@ async function openFile (file) {
   updateTransposeControls()
   status.textContent = `opening ${file.name}…`
   try {
-    adoptScore(mscz.open(new Uint8Array(await file.arrayBuffer()), file.name), file.name)
+    const next = await openScore(new Uint8Array(await file.arrayBuffer()), file.name)
+    if (next) adoptScore(next, file.name)
+    else status.textContent = 'Open canceled'
   } catch (e) {
     status.textContent = `${file.name}: ${e.message}`
   } finally {
@@ -300,29 +383,42 @@ function adoptScore (next, name = 'score') {
   updateTransposeControls()
 }
 
-async function transposeTo (semitones, spelling = score?.viewTransposeSpelling, preserveSystemBreaks = score?.viewPreserveSystemBreaks) {
+async function changeScoreView (apply, pending, failure) {
   if (!score || busy) { return }
   // PLAYBACK_BEGIN
   playback?.stop()
   // PLAYBACK_END
   busy = true
   updateTransposeControls()
-  status.textContent = 'Transposing…'
+  status.textContent = pending
   // Let the busy state appear before the synchronous engine/layout work.
   await new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 0)))
   try {
-    score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks)
+    apply()
     // PLAYBACK_BEGIN
     playback?.setScore(score, true)
     // PLAYBACK_END
     render()
   } catch (e) {
-    status.textContent = `Could not transpose: ${e.message}`
+    status.textContent = failure + ': ' + e.message
   } finally {
     busy = false
     updateTransposeControls()
   }
 }
+
+function transposeTo (semitones, spelling = score?.viewTransposeSpelling, preserveSystemBreaks = score?.viewPreserveSystemBreaks) {
+  return changeScoreView(() => score.setViewTransposeSemitones(semitones, spelling, preserveSystemBreaks),
+    'Transposing\u2026', 'Could not transpose')
+}
+
+function updateAppearance () {
+  const appearance = { showLyrics: showLyrics.checked, font: scoreFont.value }
+  return changeScoreView(() => score.setViewAppearance(appearance),
+    'Updating appearance\u2026', 'Could not change appearance')
+}
+showLyrics.addEventListener('change', updateAppearance)
+scoreFont.addEventListener('change', updateAppearance)
 
 document.getElementById('transposeDown').addEventListener('click', () => transposeTo(score.viewTransposeSemitones - 1))
 document.getElementById('transposeUp').addEventListener('click', () => transposeTo(score.viewTransposeSemitones + 1))
@@ -348,7 +444,9 @@ if (wanted) {
     if (!res.ok) { throw new Error(`${res.status} ${res.statusText}`) }
     const bytes = new Uint8Array(await res.arrayBuffer())
     const name = decodeURIComponent(new URL(wanted, location.href).pathname.split('/').pop())
-    adoptScore(mscz.open(bytes, name), name)
+    const next = await openScore(bytes, name)
+    if (next) adoptScore(next, name)
+    else status.textContent = 'Open canceled'
   } catch (e) {
     status.textContent = `${wanted}: ${e.message}`
   }
