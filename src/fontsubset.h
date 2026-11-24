@@ -48,7 +48,10 @@ public:
         }
     };
 
-    static FaceKey keyFor(const muse::draw::Font& font);
+    static FaceKey keyFor(const muse::draw::Font& font)
+    {
+        return { font.family().id().toStdString(), font.bold(), font.italic(), font.type() };
+    }
 
     //! The subset as a font file, empty if the face could not be found or
     //! subsetted.

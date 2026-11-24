@@ -39,7 +39,14 @@ AsciiStringView SymNames::nameForSymId(SymId id)
 
 const muse::TranslatableString& SymNames::userNameForSymId(SymId id)
 {
+#ifdef MUSE_NO_TRANSLATABLE_STRINGS
+    // The full table uses a bounds-checked lookup, including in this build.
+    (void)s_symNames.at(size_t(id));
+    static const TranslatableString emptyName{};
+    return emptyName;
+#else
     return s_symUserNames.at(size_t(id));
+#endif
 }
 
 String SymNames::translatedUserNameForSymId(SymId id)
@@ -66,8 +73,9 @@ SymId SymNames::symIdByOldName(const AsciiStringView& oldName)
     return muse::value(s_oldNameToSymIdHash, oldName, SymId::noSym);
 }
 
-SymId SymNames::symIdByUserName(const String& userName)
+SymId SymNames::symIdByUserName([[maybe_unused]] const String& userName)
 {
+#ifndef MUSE_NO_TRANSLATABLE_STRINGS
     size_t index = 0;
     for (const muse::TranslatableString& n : s_symUserNames) {
         if (userName == n.translated()) {
@@ -75,6 +83,11 @@ SymId SymNames::symIdByUserName(const String& userName)
         }
         index++;
     }
+#else
+    // Every translated label is empty. An empty query originally matched the
+    // first entry, and every other query fell through to noSym.
+    static_assert(size_t(SymId::noSym) == 0);
+#endif
     return SymId::noSym;
 }
 
@@ -3173,6 +3186,7 @@ constexpr const std::array<AsciiStringView, size_t(SymId::lastSym) + 1> SymNames
 
 // should be in sync with s_symNames further up and SymID in symid_p.h
 
+#ifndef MUSE_NO_TRANSLATABLE_STRINGS
 const std::array<muse::TranslatableString, size_t(SymId::lastSym) + 1> SymNames::s_symUserNames { {
     muse::TranslatableString("engraving/sym", "No symbol"),
 
@@ -6258,6 +6272,7 @@ const std::array<muse::TranslatableString, size_t(SymId::lastSym) + 1> SymNames:
     muse::TranslatableString::untranslatable("noteLongaSquareDown"),
     muse::TranslatableString("engraving/sym", "Space")
 } };
+#endif
 
 //! Conversion table of old symbol names (1.3)
 //! The mapping corresponds to fonts/mscore/glyphnames.json and must be in sync with it

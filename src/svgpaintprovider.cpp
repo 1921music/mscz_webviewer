@@ -66,8 +66,11 @@ char32_t museJazzChordFallback(char32_t cp)
 
 namespace mscz {
 
-SvgPaintProvider::SvgPaintProvider(SymbolMode symbolMode, FontMode fontMode)
-    : m_symbolMode(symbolMode), m_fontMode(fontMode)
+SvgPaintProvider::SvgPaintProvider(SymbolMode symbolMode, [[maybe_unused]] FontMode fontMode)
+    : m_symbolMode(symbolMode)
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
+    , m_fontMode(fontMode)
+#endif
 {
 }
 SvgPaintProvider::~SvgPaintProvider() = default;
@@ -94,7 +97,9 @@ void SvgPaintProvider::beginTarget(const std::string& name)
     m_state = State();
     m_nextClipId = 0;
     m_glyphIds.clear();
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
     m_usedGlyphs.clear();
+#endif
     m_openObjectGroups = 0;
     m_stateGroupOpen = false;
     m_stateGroupAttrs.clear();
@@ -502,8 +507,9 @@ void SvgPaintProvider::closeStateGroup()
     }
 }
 
-void SvgPaintProvider::noteUsedGlyphs(const String& text)
+void SvgPaintProvider::noteUsedGlyphs([[maybe_unused]] const String& text)
 {
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
     if (m_fontMode != FontMode::EmbedSubset || text.empty()) {
         return;
     }
@@ -511,10 +517,12 @@ void SvgPaintProvider::noteUsedGlyphs(const String& text)
     std::set<char32_t>& used = m_usedGlyphs[FontSubset::keyFor(m_state.font)];
     const std::u32string u32 = text.toStdU32String();
     used.insert(u32.begin(), u32.end());
+#endif
 }
 
 std::string SvgPaintProvider::fontFaceStyle()
 {
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
     if (m_fontMode != FontMode::EmbedSubset || m_usedGlyphs.empty()) {
         return std::string();
     }
@@ -545,6 +553,9 @@ std::string SvgPaintProvider::fontFaceStyle()
         return std::string();
     }
     return "<style>\n" + body + "</style>\n";
+#else
+    return {};
+#endif
 }
 
 // --- drawing -----------------------------------------------------------------

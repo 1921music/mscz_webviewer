@@ -180,7 +180,9 @@ private:
     static std::string formatNumber(double value);
 
     const SymbolMode m_symbolMode;
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
     const FontMode m_fontMode;
+#endif
 
     bool m_active = false;
     std::string m_name;
@@ -196,9 +198,11 @@ private:
     std::ostringstream m_defs;
     int m_nextClipId = 0;
     GlyphOutlines m_glyphs;
+#if MSCZ_EMBED_SVG_FONT_SUBSETS
     FontSubset m_subsetter;
     //! Code points drawn per face, collected while painting.
     std::map<FontSubset::FaceKey, std::set<char32_t> > m_usedGlyphs;
+#endif
     //! Glyph id in <defs> by font family and code point, so each glyph is
     //! defined once per document.
     std::map<std::pair<FontSubset::FaceKey, char32_t>, std::string> m_glyphIds;

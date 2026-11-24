@@ -12,13 +12,16 @@ add_library(mscz_core STATIC
     svgpaintprovider.h
     glyphoutlines.cpp
     glyphoutlines.h
-    fontsubset.cpp
     fontsubset.h
     hostio.cpp
     hostio.h
     compatfontprovider.cpp
     compatfontprovider.h
 )
+target_compile_definitions(mscz_core PUBLIC MSCZ_EMBED_SVG_FONT_SUBSETS=$<BOOL:${MSCZ_EMBED_SVG_FONT_SUBSETS}>)
+if (MSCZ_EMBED_SVG_FONT_SUBSETS)
+    target_sources(mscz_core PRIVATE fontsubset.cpp)
+endif()
 if(NOT MSCZ_PLAYBACK STREQUAL "OFF")
     target_sources(mscz_core PRIVATE playbacktimeline.cpp)
     target_compile_definitions(mscz_core PUBLIC MSCZ_ENABLE_PLAYBACK)
@@ -54,23 +57,25 @@ if (MSCZ_VENDORED_THIRDPARTY)
     # Set up by cmake/MsczThirdparty.cmake, which the root list file includes
     # before the engine so the draw module picks up the same copies.
     set(MSCZ_FT_LIB ${FREETYPE_LIBRARIES})
-    # The vendored HarfBuzz is one library covering both shaping and
-    # subsetting; see cmake/MsczThirdparty.cmake for why it cannot be two.
-    set(MSCZ_HB_SUBSET_LIB ${HARFBUZZ_LIBRARIES})
+    set(MSCZ_HB_LIB ${HARFBUZZ_LIBRARIES})
     target_include_directories(mscz_core PRIVATE ${FREETYPE_INCLUDE_DIRS})
 else()
     find_package(Freetype REQUIRED)
     set(MSCZ_FT_LIB Freetype::Freetype)
 
-    # hb-subset, for cutting fonts down to the glyphs a page uses.
     find_package(PkgConfig REQUIRED)
-    pkg_check_modules(HARFBUZZ_SUBSET REQUIRED IMPORTED_TARGET harfbuzz-subset)
-    set(MSCZ_HB_SUBSET_LIB PkgConfig::HARFBUZZ_SUBSET)
+    if (MSCZ_EMBED_SVG_FONT_SUBSETS)
+        pkg_check_modules(HARFBUZZ_SUBSET REQUIRED IMPORTED_TARGET harfbuzz-subset)
+        set(MSCZ_HB_LIB PkgConfig::HARFBUZZ_SUBSET)
+    else()
+        pkg_check_modules(HARFBUZZ_SHAPING REQUIRED IMPORTED_TARGET harfbuzz)
+        set(MSCZ_HB_LIB PkgConfig::HARFBUZZ_SHAPING)
+    endif()
 endif()
 
 target_link_libraries(mscz_core PUBLIC
     ${MSCZ_FT_LIB}
-    ${MSCZ_HB_SUBSET_LIB}
+    ${MSCZ_HB_LIB}
     muse::global
     muse::draw
     engraving

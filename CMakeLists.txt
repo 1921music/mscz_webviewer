@@ -196,6 +196,8 @@ if (EMSCRIPTEN)
     endif()
 endif()
 
+option(MSCZ_EMBED_SVG_FONT_SUBSETS "Allow SVG rendering to embed per-page font subsets" ON)
+
 if (MSCZ_VENDORED_THIRDPARTY)
     include(cmake/MsczThirdparty.cmake)
 endif()

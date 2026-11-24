@@ -58,16 +58,6 @@ FontSubset::~FontSubset()
     delete m_impl;
 }
 
-FontSubset::FaceKey FontSubset::keyFor(const Font& font)
-{
-    FaceKey key;
-    key.family = font.family().id().toStdString();
-    key.bold = font.bold();
-    key.italic = font.italic();
-    key.type = font.type();
-    return key;
-}
-
 std::vector<std::uint8_t> FontSubset::subset(const FaceKey& key, const std::set<char32_t>& codepoints)
 {
     std::vector<std::uint8_t> out;

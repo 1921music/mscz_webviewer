@@ -76,12 +76,15 @@ set(FREETYPE_INCLUDE_DIRS ${MSCZ_THIRDPARTY}/freetype/include)
 # hb-face, hb-shape and the whole hb-ot-* set, so linking both is a wall of
 # duplicate symbols. What harfbuzz-subset.cc lacks is hb-ft.cc, the FreeType
 # bridge -- so the shaping and subsetting we need is that amalgam plus that one
-# file. A build that embeds no fonts pays nothing for the subsetter anyway,
-# since nothing then references hb_subset_* and -flto drops it.
-add_library(mscz_harfbuzz STATIC
-    ${MSCZ_THIRDPARTY}/harfbuzz/src/harfbuzz-subset.cc
-    ${MSCZ_THIRDPARTY}/harfbuzz/src/hb-ft.cc
-)
+# file. The shaping-only amalgam already includes hb-ft.cc.
+if (MSCZ_EMBED_SVG_FONT_SUBSETS)
+    add_library(mscz_harfbuzz STATIC
+        ${MSCZ_THIRDPARTY}/harfbuzz/src/harfbuzz-subset.cc
+        ${MSCZ_THIRDPARTY}/harfbuzz/src/hb-ft.cc
+    )
+else()
+    add_library(mscz_harfbuzz STATIC ${MSCZ_THIRDPARTY}/harfbuzz/src/harfbuzz.cc)
+endif()
 target_compile_definitions(mscz_harfbuzz PUBLIC HB_TINY HAVE_FREETYPE=1 HB_NO_MT)
 target_include_directories(mscz_harfbuzz PUBLIC
     ${MSCZ_THIRDPARTY}/harfbuzz/src
