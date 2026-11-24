@@ -166,9 +166,13 @@ public:
     Spatium paddingToNotationAbove() const { return m_paddingToNotationAbove; }
     Spatium paddingToNotationBelow() const { return m_paddingToNotationBelow; }
 
+    bool avoidsNotationOverlap() const { return m_avoidsNotationOverlap; }
+    void setAvoidsNotationOverlap(bool value) { m_avoidsNotationOverlap = value; }
+
 private:
     Spatium m_paddingToNotationAbove;
     Spatium m_paddingToNotationBelow;
+    bool m_avoidsNotationOverlap = false;
 };
 
 //---------------------------------------------------------

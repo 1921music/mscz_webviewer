@@ -6,8 +6,8 @@ use crate::model::*;
 use crate::score::{Barline, Plan};
 use crate::{Result, check};
 
-#[derive(Debug)]
-struct Xml {
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Xml {
     name: String,
     attrs: Vec<(&'static str, String)>,
     text: String,
@@ -263,7 +263,13 @@ fn pitch(parent: &mut Xml, prefix: &str, pitch: Pitch) {
     }
 }
 
-fn harmony(bar: &mut Xml, event: &Event, offset: i64, visible: bool) -> Result<()> {
+fn harmony(
+    bar: &mut Xml,
+    event: &Event,
+    offset: i64,
+    visible: bool,
+    fretboard: Option<&crate::fretboard::Frame>,
+) -> Result<()> {
     if event.rest.is_some() {
         if visible {
             let chord = bar.add("harmony");
@@ -297,6 +303,36 @@ fn harmony(bar: &mut Xml, event: &Event, offset: i64, visible: bool) -> Result<(
         degree.text("degree-alter", alter);
         degree.text("degree-type", operation);
     }
+    if visible && let Some(strings) = fretboard {
+        let min = strings
+            .iter()
+            .flatten()
+            .map(|p| p.fret)
+            .filter(|fret| *fret > 0)
+            .min()
+            .unwrap_or(1);
+        let max = strings.iter().flatten().map(|p| p.fret).max().unwrap_or(0);
+        let base = if max > 4 { min } else { 1 };
+        let frame = chord.add("frame").attr("unplayed", "x");
+        frame.text("frame-strings", strings.len());
+        frame.text("frame-frets", (max.saturating_sub(base) + 1).max(4));
+        if base > 1 {
+            frame.text("first-fret", base);
+        }
+        for (index, string) in strings.iter().enumerate() {
+            if let Some(shape) = string {
+                let note = frame.add("frame-note");
+                note.text("string", strings.len() - index);
+                note.text("fret", shape.fret);
+                if let Some(number) = shape.number {
+                    note.text("fingering", number);
+                }
+                if let Some(direction) = shape.barre {
+                    note.add("barre").attr("type", direction);
+                }
+            }
+        }
+    }
     if offset != 0 {
         chord.text("offset", offset);
     }
@@ -324,6 +360,9 @@ fn direction(bar: &mut Xml, d: &Direction, offset: i64) {
                 .attr("smufl", d.kind)
                 .attr("relative-x", "-15")
                 .attr("default-y", "43");
+        }
+        "pedal" => {
+            kind.add("pedal").attr("type", &d.text).attr("line", "yes");
         }
         "wedge" => {
             kind.add(d.kind).attr("type", &d.text);
@@ -367,8 +406,15 @@ fn note_head<'a>(
     if chord_member {
         note.add("chord");
     }
+    let drum = member.and_then(|member| member.drum);
     if let Some(member) = member {
-        pitch(note.add("pitch"), "", member.pitch);
+        if drum.is_some() {
+            let unpitched = note.add("unpitched");
+            unpitched.text("display-step", member.pitch.step_name());
+            unpitched.text("display-octave", member.pitch.octave);
+        } else {
+            pitch(note.add("pitch"), "", member.pitch);
+        }
     } else {
         let rest = note.add("rest");
         if event.measure_rest {
@@ -380,6 +426,9 @@ fn note_head<'a>(
     }
     for tie in ties {
         note.add("tie").attr("type", tie);
+    }
+    if let Some(drum) = drum {
+        note.add("instrument").attr("id", drum.midi_key);
     }
     if let Some(voice) = voice {
         note.text("voice", voice);
@@ -402,7 +451,9 @@ fn note_head<'a>(
         if let Some(stem) = event.stem {
             note.text("stem", stem);
         }
-        let value = if member.harmonic {
+        let value = if let Some(drum) = member.drum {
+            drum.notehead
+        } else if member.harmonic {
             "diamond"
         } else {
             event.notehead
@@ -999,6 +1050,16 @@ pub fn write(
     title: Option<&str>,
     measure_numbers: Option<&str>,
 ) -> Result<String> {
+    document(score, plan, title, measure_numbers, false).map(serialize)
+}
+
+pub(crate) fn document(
+    score: &Score<'_, '_>,
+    plan: &Plan,
+    title: Option<&str>,
+    measure_numbers: Option<&str>,
+    finish_secondary: bool,
+) -> Result<Xml> {
     let melody = &score.melody;
     let chords = &score.chords;
     let divisions = plan.divisions;
@@ -1092,6 +1153,7 @@ pub fn write(
                 chord,
                 (chord.position - start).units(divisions),
                 visible,
+                chords.guitar_frames.get(&chord.position),
             )?;
             previous_chord = Some(current);
         }
@@ -1133,12 +1195,452 @@ pub fn write(
                 check(cursor <= end, "Second voice note crosses a barline")?;
                 note(bar, event, divisions, &plan.lyrics, Some("2"))?;
             }
+            if finish_secondary && cursor < end {
+                bar.add("forward")
+                    .text("duration", (end - cursor).units(divisions));
+                cursor = end;
+            }
+        }
+        for (index, voice) in melody.extra_voices.iter().enumerate() {
+            let first = voice.partition_point(|event| event.position < start);
+            let last = voice.partition_point(|event| event.position < end);
+            if first == last {
+                continue;
+            }
+            if cursor > start {
+                bar.add("backup")
+                    .text("duration", (cursor - start).units(divisions));
+            }
+            cursor = start;
+            let number = (index + 3).to_string();
+            for event in &voice[first..last] {
+                if event.position > cursor {
+                    bar.add("forward")
+                        .text("duration", (event.position - cursor).units(divisions));
+                }
+                cursor = event.position + event.length();
+                check(cursor <= end, "Additional voice note crosses a barline")?;
+                note(bar, event, divisions, &plan.lyrics, Some(&number))?;
+            }
+            if finish_secondary && cursor < end {
+                bar.add("forward")
+                    .text("duration", (end - cursor).units(divisions));
+                cursor = end;
+            }
         }
         if let Some(line) = plan.right.get(&end) {
             barline(bar, "right", line);
         }
     }
+    Ok(root)
+}
+
+pub(crate) fn serialize(root: Xml) -> String {
     let mut document = String::from("<?xml version='1.0' encoding='utf-8'?>\n");
     root.write(0, &mut document);
-    Ok(document)
+    document
+}
+
+pub(crate) fn build_grouped(
+    parts: &[(&str, Vec<(Score<'_, '_>, Plan)>)],
+    title: Option<&str>,
+    measure_numbers: Option<&str>,
+) -> Result<Xml> {
+    let (first, plan) = &parts[0].1[0];
+    let mut root = document(first, plan, title, measure_numbers, true)?;
+    let mut first_part = root.children.pop().unwrap();
+    let mut part_list = root.children.pop().unwrap();
+    part_list.children.clear();
+    let mut output = Vec::new();
+    for (part_index, (name, staves)) in parts.iter().enumerate() {
+        let (staff, plan) = &staves[0];
+        let id = format!("P{}", part_index + 1);
+        let mut part = if part_index == 0 {
+            std::mem::replace(&mut first_part, Xml::new("part"))
+        } else {
+            document(staff, plan, None, None, true)?
+                .children
+                .pop()
+                .unwrap()
+        };
+        part.attrs.clear();
+        part.attr("id", &id);
+        let definition = part_list.add("score-part").attr("id", &id);
+        definition.text("part-name", name);
+        if *name == "Piano" {
+            let instrument = format!("{id}-I1");
+            definition
+                .add("score-instrument")
+                .attr("id", &instrument)
+                .text("instrument-name", "Grand Piano");
+            definition
+                .add("midi-instrument")
+                .attr("id", &instrument)
+                .text("midi-program", 1);
+        }
+        if *name == "Rhythm" {
+            let measure = &mut part.children[0];
+            let attrs = measure
+                .children
+                .iter_mut()
+                .find(|e| e.name == "attributes")
+                .unwrap();
+            if let Some(clef) = attrs.children.iter_mut().find(|e| e.name == "clef") {
+                clef.attr("print-object", "no");
+            }
+            attrs.add("staff-details").text("staff-lines", 1);
+        }
+        if *name == "Drums" {
+            let instruments = staff
+                .melody
+                .events
+                .iter()
+                .chain(&staff.melody.secondary)
+                .chain(staff.melody.extra_voices.iter().flatten())
+                .flat_map(|event| &event.members)
+                .filter_map(|member| member.drum)
+                .map(|drum| (drum.midi_key, drum.name))
+                .collect::<BTreeMap<_, _>>();
+            for (key, name) in &instruments {
+                let instrument = format!("{id}-D{key}");
+                definition
+                    .add("score-instrument")
+                    .attr("id", &instrument)
+                    .text("instrument-name", name);
+            }
+            for key in instruments.keys() {
+                let instrument = format!("{id}-D{key}");
+                let midi = definition.add("midi-instrument").attr("id", instrument);
+                midi.text("midi-channel", 10);
+                midi.text("midi-program", 1);
+                midi.text("midi-unpitched", key + 1);
+            }
+            for instrument in part
+                .children
+                .iter_mut()
+                .flat_map(|measure| &mut measure.children)
+                .filter(|element| element.name == "note")
+                .flat_map(|note| &mut note.children)
+                .filter(|element| element.name == "instrument")
+            {
+                let value = &mut instrument.attrs[0].1;
+                *value = format!("{id}-D{value}");
+            }
+        }
+        if staves.len() > 1 {
+            for (index, measure) in part.children.iter_mut().enumerate() {
+                number_staff(&mut measure.children, 1, 0);
+                if index == 0 {
+                    let attrs = measure
+                        .children
+                        .iter_mut()
+                        .find(|e| e.name == "attributes")
+                        .unwrap();
+                    let at = attrs
+                        .children
+                        .iter()
+                        .position(|e| e.name == "clef")
+                        .unwrap();
+                    let mut count = Xml::new("staves");
+                    count.text = staves.len().to_string();
+                    attrs.children.insert(at, count);
+                }
+            }
+            for (index, (staff, other_plan)) in staves.iter().enumerate().skip(1) {
+                let other = document(staff, other_plan, None, None, true)?
+                    .children
+                    .pop()
+                    .unwrap();
+                for (bar, (measure, bounds)) in part
+                    .children
+                    .iter_mut()
+                    .zip(other.children.into_iter().zip(plan.boundaries.windows(2)))
+                {
+                    let mut contents = measure.children;
+                    let voice_offset = staves[..index]
+                        .iter()
+                        .map(|(staff, _)| 2 + staff.melody.extra_voices.len())
+                        .sum();
+                    number_staff(&mut contents, index + 1, voice_offset);
+                    let mut attrs = None;
+                    contents.retain_mut(|e| match e.name.as_str() {
+                        "print" | "barline" => false,
+                        "attributes" => {
+                            e.children
+                                .retain(|a| matches!(a.name.as_str(), "clef" | "key"));
+                            if !e.children.is_empty() {
+                                attrs = Some(std::mem::replace(e, Xml::new("attributes")));
+                            }
+                            false
+                        }
+                        _ => true,
+                    });
+                    if let Some(attrs) = attrs {
+                        let at = bar
+                            .children
+                            .partition_point(|e| matches!(e.name.as_str(), "print" | "attributes"));
+                        bar.children.insert(at, attrs);
+                    }
+                    let right = bar.children.pop_if(|e| {
+                        e.name == "barline"
+                            && e.attrs
+                                .iter()
+                                .any(|(key, value)| *key == "location" && value == "right")
+                    });
+                    bar.add("backup")
+                        .text("duration", (bounds[1] - bounds[0]).units(plan.divisions));
+                    bar.children.extend(contents);
+                    bar.children.extend(right);
+                }
+            }
+        }
+        output.push(part);
+    }
+    root.children.push(part_list);
+    root.children.extend(output);
+    Ok(root)
+}
+
+pub(crate) fn set_initial_playback_tempo(root: &mut Xml, bpm: f64) {
+    let bar = &mut root
+        .children
+        .iter_mut()
+        .find(|e| e.name == "part")
+        .unwrap()
+        .children[0];
+    let at = bar
+        .children
+        .partition_point(|e| matches!(e.name.as_str(), "print" | "attributes"));
+    for node in &bar.children[at..] {
+        if matches!(node.name.as_str(), "note" | "forward" | "backup") {
+            break;
+        }
+        if node.name == "direction"
+            && !node.children.iter().any(|c| c.name == "offset")
+            && node
+                .children
+                .iter()
+                .any(|c| c.name == "sound" && c.attrs.iter().any(|a| a.0 == "tempo"))
+        {
+            return;
+        }
+    }
+    let mut sound = Xml::new("sound");
+    sound.attr("tempo", bpm);
+    bar.children.insert(at, sound);
+}
+
+pub(crate) fn hide_barlines(root: &mut Xml) {
+    for part in root.children.iter_mut().filter(|e| e.name == "part") {
+        for measure in &mut part.children {
+            if !measure.children.iter().any(|e| e.name == "barline") {
+                measure
+                    .add("barline")
+                    .attr("location", "right")
+                    .text("bar-style", "none");
+            }
+        }
+    }
+}
+
+pub(crate) fn join_sections(sections: Vec<(Option<String>, Xml)>) -> Result<String> {
+    let unmetered = sections.iter().all(|(_, xml)| {
+        let mut meters = xml
+            .children
+            .iter()
+            .filter(|e| e.name == "part")
+            .flat_map(|part| &part.children)
+            .flat_map(|measure| &measure.children)
+            .filter(|e| e.name == "attributes")
+            .flat_map(|e| &e.children)
+            .filter(|e| e.name == "time")
+            .peekable();
+        meters.peek().is_some()
+            && meters.all(|meter| {
+                meter
+                    .attrs
+                    .iter()
+                    .any(|(name, value)| *name == "print-object" && value == "no")
+            })
+    });
+    let mut sections = sections.into_iter();
+    let (title, mut result) = sections.next().ok_or("No printable scores")?;
+    label_section(&mut result, title.as_deref(), false, unmetered);
+    if unmetered {
+        let id = result
+            .children
+            .iter_mut()
+            .find(|e| e.name == "identification")
+            .unwrap();
+        if !id.children.iter().any(|e| e.name == "miscellaneous") {
+            id.add("miscellaneous");
+        }
+        id.children
+            .iter_mut()
+            .find(|e| e.name == "miscellaneous")
+            .unwrap()
+            .text("miscellaneous-field", "yes")
+            .attr("name", "openbook-unmetered-sections");
+    }
+    for (title, mut section) in sections {
+        let parts = result
+            .children
+            .iter_mut()
+            .find(|e| e.name == "part-list")
+            .unwrap();
+        let next_parts = section
+            .children
+            .iter_mut()
+            .find(|e| e.name == "part-list")
+            .unwrap();
+        merge_section_parts(parts, next_parts)?;
+        label_section(&mut section, title.as_deref(), true, unmetered);
+        for (part, mut next) in result
+            .children
+            .iter_mut()
+            .filter(|e| e.name == "part")
+            .zip(section.children.into_iter().filter(|e| e.name == "part"))
+        {
+            let last_number = part
+                .children
+                .last()
+                .and_then(|measure| measure.attrs.iter().find(|(name, _)| *name == "number"))
+                .and_then(|(_, value)| value.parse::<usize>().ok())
+                .unwrap_or(part.children.len());
+            for (index, measure) in next.children.iter_mut().enumerate() {
+                let number = measure
+                    .attrs
+                    .iter_mut()
+                    .find(|(name, _)| *name == "number")
+                    .unwrap();
+                number.1 = (last_number + index + 1).to_string();
+            }
+            part.children.extend(next.children);
+        }
+    }
+    Ok(serialize(result))
+}
+
+fn merge_section_parts(parts: &mut Xml, next: &mut Xml) -> Result<()> {
+    check(
+        parts.children.len() == next.children.len(),
+        "Printable scores use different part layouts",
+    )?;
+    for (part, next_part) in parts.children.iter_mut().zip(&mut next.children) {
+        check(
+            part.name == next_part.name
+                && part.attrs == next_part.attrs
+                && part.children.first() == next_part.children.first(),
+            "Printable scores use different part layouts",
+        )?;
+        for instrument in next_part.children.drain(1..) {
+            if let Some(prior) = part
+                .children
+                .iter()
+                .find(|e| e.name == instrument.name && e.attrs == instrument.attrs)
+            {
+                check(
+                    prior == &instrument,
+                    "Conflicting instruments across printable scores",
+                )?;
+            } else if instrument.name == "score-instrument" {
+                let at = part
+                    .children
+                    .iter()
+                    .position(|e| e.name == "midi-instrument")
+                    .unwrap_or(part.children.len());
+                part.children.insert(at, instrument);
+            } else {
+                part.children.push(instrument);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn label_section(document: &mut Xml, title: Option<&str>, start_system: bool, unmetered: bool) {
+    let bar = &mut document
+        .children
+        .iter_mut()
+        .find(|e| e.name == "part")
+        .unwrap()
+        .children[0];
+    if start_system {
+        if !bar.children.first().is_some_and(|e| e.name == "print") {
+            bar.children.insert(0, Xml::new("print"));
+        }
+        bar.children[0].attrs.retain(|a| a.0 != "new-system");
+        bar.children[0].attr("new-system", "yes");
+    }
+    if let Some(title) = title {
+        let at = bar
+            .children
+            .partition_point(|e| matches!(e.name.as_str(), "print" | "attributes"));
+        let mut heading = Xml::new("direction");
+        let kind = heading.attr("placement", "above").add("direction-type");
+        if unmetered {
+            kind.text("rehearsal", title).attr("enclosure", "none");
+        } else {
+            kind.text("words", title).attr("font-weight", "bold");
+        }
+        bar.children.insert(at, heading);
+    }
+}
+
+fn number_staff(elements: &mut [Xml], staff: usize, offset: usize) {
+    for element in elements {
+        match element.name.as_str() {
+            "attributes" => {
+                for child in &mut element.children {
+                    if matches!(child.name.as_str(), "key" | "clef") {
+                        child.attr("number", staff);
+                    }
+                }
+            }
+            "note" => {
+                if let Some(voice) = element.children.iter_mut().find(|e| e.name == "voice") {
+                    voice.text = (offset + voice.text.parse::<usize>().unwrap()).to_string();
+                } else {
+                    let at = element
+                        .children
+                        .iter()
+                        .position(|e| {
+                            matches!(
+                                e.name.as_str(),
+                                "type"
+                                    | "time-modification"
+                                    | "stem"
+                                    | "notehead"
+                                    | "beam"
+                                    | "notations"
+                                    | "lyric"
+                            )
+                        })
+                        .unwrap_or(element.children.len());
+                    let mut voice = Xml::new("voice");
+                    voice.text = (offset + 1).to_string();
+                    element.children.insert(at, voice);
+                }
+                let at = element
+                    .children
+                    .iter()
+                    .position(|e| matches!(e.name.as_str(), "beam" | "notations" | "lyric"))
+                    .unwrap_or(element.children.len());
+                let mut target = Xml::new("staff");
+                target.text = staff.to_string();
+                element.children.insert(at, target);
+            }
+            "direction" => {
+                let at = element
+                    .children
+                    .iter()
+                    .position(|e| e.name == "sound")
+                    .unwrap_or(element.children.len());
+                let mut target = Xml::new("staff");
+                target.text = staff.to_string();
+                element.children.insert(at, target);
+            }
+            _ => {}
+        }
+    }
 }

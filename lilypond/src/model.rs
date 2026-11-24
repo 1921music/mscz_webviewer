@@ -136,9 +136,17 @@ impl Pitch {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Drum {
+    pub midi_key: u8,
+    pub notehead: &'static str,
+    pub name: &'static str,
+}
+
 #[derive(Clone, Debug)]
 pub struct Member {
     pub pitch: Pitch,
+    pub drum: Option<Drum>,
     pub parentheses: bool,
     pub harmonic: bool,
 }
@@ -283,6 +291,8 @@ pub struct Track {
     pub tempos: BTreeMap<Time, Tempo>,
     pub events: Vec<Event>,
     pub secondary: Vec<Event>,
+    pub extra_voices: Vec<Vec<Event>>,
+    pub guitar_frames: BTreeMap<Time, crate::fretboard::Frame>,
     pub repeats: Vec<Repeat>,
     pub final_barlines: BTreeSet<Time>,
     pub bar_checks: Vec<Time>,
@@ -293,7 +303,7 @@ pub struct Track {
     pub chord_changes: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Info {
     pub title: Option<String>,
     pub subtitle: Option<String>,

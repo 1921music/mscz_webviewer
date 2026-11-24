@@ -6,12 +6,15 @@
 #include <map>
 #include "serialization/zipreader.h"
 #include "serialization/xmlstreamreader.h"
+#include "engraving/dom/box.h"
+#include "engraving/dom/chord.h"
 #include "engraving/dom/chordrest.h"
 #include "engraving/dom/harmony.h"
 #include "engraving/dom/instrument.h"
 #include "engraving/dom/lyrics.h"
 #include "engraving/dom/masterscore.h"
 #include "engraving/dom/measure.h"
+#include "engraving/dom/note.h"
 #include "engraving/dom/part.h"
 #include "engraving/dom/segment.h"
 #include "engraving/dom/symbol.h"
@@ -43,7 +46,7 @@ muse::String initialMeasureNumbering(const muse::ByteArray& data)
     return {};
 }
 
-bool isLilyPondPrototype(muse::XmlStreamReader& xml)
+bool isLilyPondPrototype(muse::XmlStreamReader& xml, bool& unmeteredSections)
 {
     bool found = false;
     while (xml.readNextStartElement()) {
@@ -53,6 +56,15 @@ bool isLilyPondPrototype(muse::XmlStreamReader& xml)
                     if (xml.readText().trimmed() == u"mscz_webviewer LilyPond prototype") {
                         found = true;
                     }
+                } else {
+                    xml.skipCurrentElement();
+                }
+            }
+        } else if (xml.name() == "miscellaneous") {
+            while (xml.readNextStartElement()) {
+                if (xml.name() == "miscellaneous-field"
+                    && xml.asciiAttribute("name") == "openbook-unmetered-sections") {
+                    unmeteredSections = xml.readText().trimmed() == u"yes";
                 } else {
                     xml.skipCurrentElement();
                 }
@@ -190,17 +202,15 @@ int applyLyricExtents(muse::XmlStreamReader& xml, mu::engraving::Segment* segmen
 bool applyLilyPondEngraving(mu::engraving::MasterScore* score, const muse::ByteArray& data)
 {
     using namespace mu::engraving;
-    if (score->nstaves() != 1) {
-        return false;
-    }
     muse::XmlStreamReader xml(data);
     if (!xml.readNextStartElement() || xml.name() != "score-partwise") {
         return false;
     }
     bool lilyPondPrototype = false;
+    bool unmeteredSections = false;
     while (xml.readNextStartElement()) {
         if (xml.name() == "identification") {
-            lilyPondPrototype = isLilyPondPrototype(xml);
+            lilyPondPrototype = isLilyPondPrototype(xml, unmeteredSections);
         } else if (xml.name() == "part") {
             break;
         } else {
@@ -209,6 +219,20 @@ bool applyLilyPondEngraving(mu::engraving::MasterScore* score, const muse::ByteA
     }
     if (!lilyPondPrototype || xml.name() != "part") {
         return false;
+    }
+    if (auto* first = score->first(); first && first->isVBox()) {
+        toVBox(first)->setAvoidsNotationOverlap(true);
+    }
+    if (score->nstaves() != 1) {
+        return false;
+    }
+    if (unmeteredSections) {
+        score->style().set(Sid::genCourtesyTimesig, false);
+        score->style().set(Sid::genCourtesyClef, false);
+        score->style().set(Sid::lastSystemFillLimit, 0.0);
+        score->style().set(Sid::rehearsalMarkAlign, Align(AlignH::LEFT, AlignV::BASELINE));
+        score->style().set(Sid::rehearsalMarkPosition, AlignH::LEFT);
+        score->styleChanged();
     }
     enableImportedSegnoAutoplace(score);
     auto* measure = score->firstMeasure();
@@ -252,6 +276,53 @@ bool applyLilyPondEngraving(mu::engraving::MasterScore* score, const muse::ByteA
     return true;
 }
 
+void positionRhythmNotes(mu::engraving::MasterScore* score, const muse::ByteArray& data)
+{
+    using namespace mu::engraving;
+    std::map<const Part*, int> lines;
+    for (const auto* part : score->parts()) {
+        const auto name = part->partName();
+        if (name == u"Rhythm" || name == u"Rhythmic Voice") {
+            lines.emplace(part, name == u"Rhythm" ? 0 : 4);
+        }
+    }
+    if (lines.empty()) {
+        return;
+    }
+    muse::XmlStreamReader xml(data);
+    bool unmetered = false;
+    bool source = false;
+    if (xml.readNextStartElement() && xml.name() == "score-partwise") {
+        while (xml.readNextStartElement()) {
+            if (xml.name() == "identification") {
+                source = isLilyPondPrototype(xml, unmetered);
+                break;
+            }
+            xml.skipCurrentElement();
+        }
+    }
+    if (!source) {
+        return;
+    }
+    score->setMetaTag(u"msczLilyPondRhythm", u"yes");
+    for (auto* segment = score->firstSegment(SegmentType::ChordRest); segment;
+         segment = segment->next1(SegmentType::ChordRest)) {
+        for (auto* item : segment->elist()) {
+            if (!item || !item->isChord()) {
+                continue;
+            }
+            const auto line = lines.find(item->part());
+            if (line == lines.end()) {
+                continue;
+            }
+            for (auto* note : toChord(item)->notes()) {
+                note->setFixed(true);
+                note->setFixedLine(line->second);
+            }
+        }
+    }
+}
+
 void setLilyPondPlaybackSounds(mu::engraving::MasterScore* score)
 {
     using mu::engraving::InstrChannel;
@@ -262,7 +333,11 @@ void setLilyPondPlaybackSounds(mu::engraving::MasterScore* score)
     constexpr int chordVolume = 62;
     for (auto* part : score->parts()) {
         auto* instrument = part->instrument();
-        part->setMidiProgram(flute, 0);
+        // Keep the percussion kit supplied by MusicXML and use piano for a
+        // multi-staff keyboard part. Lead-sheet melodies retain the flute.
+        if (!instrument->useDrumset()) {
+            part->setMidiProgram(part->nstaves() > 1 ? acousticGrandPiano : flute, 0);
+        }
         part->updateHarmonyChannels(false);
         const auto harmony = instrument->channelIdx(muse::String::fromUtf8(InstrChannel::HARMONY_NAME));
         if (harmony != -1) {
@@ -346,6 +421,9 @@ muse::Ret importMusicXml(mu::engraving::MasterScore* score, StreamDevice& device
     mu::engraving::ScoreLoad loading;
     const auto result = mu::engraving::make_ret(mu::iex::musicxml::importMusicXmlfromBuffer(
         score, muse::String::fromStdString(info.name), data));
+    if (result) {
+        positionRhythmNotes(score, data);
+    }
     if (result && applyLilyPondEngraving(score, data)) {
         spaceParenthesizedMetronomeMarks(score);
         setLilyPondPlaybackSounds(score);

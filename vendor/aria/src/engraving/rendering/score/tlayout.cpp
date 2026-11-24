@@ -31,6 +31,7 @@
 #include "infrastructure/ld_access.h"
 
 #include "iengravingfont.h"
+#include "iengravingfontsprovider.h"
 #include "types/typesconv.h"
 #include "types/symnames.h"
 #include "dom/score.h"
@@ -4101,6 +4102,14 @@ void TLayout::layoutNote(const Note* item, Note::LayoutData* ldata)
             ldata->cachedSymNull.set_value(SymId::noSym);
         }
         noteBBox = item->symBbox(nh);
+        // A glyph must have a bounding box to be included in page painting.
+        if (noteBBox.isEmpty() && item->fixed() && item->headGroup() == NoteHeadGroup::HEAD_SLASH
+            && item->score()->metaTag(u"msczLilyPondRhythm") == u"yes") {
+            const auto font = item->score()->engravingFonts()->fontByName("MuseJazz");
+            if (font && font->isValid(nh)) {
+                noteBBox = font->bbox(nh, item->magS());
+            }
+        }
     }
 
     ldata->setBbox(noteBBox);

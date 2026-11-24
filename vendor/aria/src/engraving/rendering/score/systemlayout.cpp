@@ -2933,8 +2933,25 @@ double SystemLayout::minDistance(const System* top, const System* bottom, const 
     const VBox* bottomVBox = static_cast<VBox*>(bottom->vbox());
 
     if (topVBox && !bottomVBox) {
-        return std::max(topVBox->absoluteFromSpatium(topVBox->bottomGap()),
-                        bottom->minTop() + topVBox->absoluteFromSpatium(topVBox->paddingToNotationBelow()));
+        const double padding = topVBox->absoluteFromSpatium(topVBox->paddingToNotationBelow());
+        double distance = std::max(topVBox->absoluteFromSpatium(topVBox->bottomGap()), bottom->minTop() + padding);
+        const auto staffIdx = bottom->firstVisibleStaff();
+        if (topVBox->avoidsNotationOverlap() && staffIdx != muse::nidx) {
+            const SysStaff* staff = bottom->staff(staffIdx);
+            Shape text;
+            // Imported multiline credits can extend below their frame.
+            const PointF origin = topVBox->pos() - PointF(0.0, top->height() + staff->y());
+            for (const EngravingItem* item : topVBox->el()) {
+                if (item->isText() && item->visible()) {
+                    text.add(item->shape().translated(origin + item->pos()));
+                }
+            }
+            const double overlap = staff->skyline().north().minDistanceToShapeAbove(
+                text, conf.styleMM(Sid::skylineMinHorizontalClearance));
+            const double textClearance = topVBox->absoluteFromSpatium(Spatium(0.85));
+            distance = std::max(distance, overlap + textClearance);
+        }
+        return distance;
     } else if (!topVBox && bottomVBox) {
         return std::max(bottomVBox->absoluteFromSpatium(bottomVBox->topGap()),
                         top->minBottom() + bottomVBox->absoluteFromSpatium(bottomVBox->paddingToNotationAbove()));

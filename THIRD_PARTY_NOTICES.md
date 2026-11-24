@@ -85,3 +85,11 @@ The optional OpenBook template module includes [Tera 2.4.0](https://github.com/K
 and [Serde 1.0.229](https://github.com/serde-rs/serde). Their MIT license notices
 are in [lilypond/tera/NOTICE.txt](lilypond/tera/NOTICE.txt) and are included in
 the standalone HTML.
+
+
+## LilyPond guitar fretboard data
+
+The predefined voicings in the LilyPond converter are derived from LilyPond
+2.24's guitar fretboard tables. Copyright (C) 2008–2022 Carl D. Sorensen.
+The data is distributed under the GNU General Public License, version 3 or later.
+[Upstream source](https://github.com/lilypond/lilypond/tree/stable/2.24/ly)

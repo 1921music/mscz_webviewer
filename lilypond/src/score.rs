@@ -34,6 +34,11 @@ pub fn plan(score: &mut Score<'_, '_>, page_breaks: &[i64]) -> Result<Plan> {
         if melody.pickup == Time::ZERO {
             melody.pickup = chords.pickup;
         }
+        // A chart can stop notating the melody while harmony continues.
+        // Meter changes in the remaining chord track still define its bars.
+        for (&position, &meter) in chords.meters.range(melody.position..) {
+            melody.meters.entry(position).or_insert(meter);
+        }
         melody.position = melody.position.max(chords.position);
         if melody.repeats.is_empty() {
             melody.repeats = chords.repeats.clone();
@@ -58,6 +63,10 @@ pub fn plan(score: &mut Score<'_, '_>, page_breaks: &[i64]) -> Result<Plan> {
     melody.secondary = split_rests(std::mem::take(&mut melody.secondary), &boundaries)?;
     resolve_ties(&mut melody.events);
     resolve_ties(&mut melody.secondary);
+    for voice in &mut melody.extra_voices {
+        *voice = split_rests(std::mem::take(voice), &boundaries)?;
+        resolve_ties(voice);
+    }
     check(
         melody.keys.keys().chain(melody.clefs.keys()).all(on_bar),
         "Key or clef change inside a measure",
@@ -156,6 +165,7 @@ pub fn plan(score: &mut Score<'_, '_>, page_breaks: &[i64]) -> Result<Plan> {
         }
     }
     let (mut left, mut right) = repeat_barlines(&melody.repeats, &boundaries)?;
+    manual_repeats(&chords.repeat_commands, &boundaries, &mut left, &mut right)?;
     manual_repeats(&melody.repeat_commands, &boundaries, &mut left, &mut right)?;
     for &p in melody.final_barlines.union(&chords.final_barlines) {
         check(
@@ -169,6 +179,7 @@ pub fn plan(score: &mut Score<'_, '_>, page_breaks: &[i64]) -> Result<Plan> {
         .events
         .iter()
         .chain(&melody.secondary)
+        .chain(melody.extra_voices.iter().flatten())
         .chain(&chords.events)
     {
         let denominator = (event.length() * Time::integer(4)).denominator;

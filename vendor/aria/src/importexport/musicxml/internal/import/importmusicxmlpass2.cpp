@@ -7754,6 +7754,7 @@ FretDiagram* MusicXmlParserPass2::frame()
     // Format: fret: string
     std::map<int, int> bStarts;
     std::map<int, int> bEnds;
+    std::map<int, int> fingers;
 
     while (m_e.readNextStartElement()) {
         if (m_e.name() == "first-fret") {
@@ -7778,12 +7779,15 @@ FretDiagram* MusicXmlParserPass2::frame()
             int fret   = -1;
             int string = -1;
             int actualString = -1;
+            int finger = 0;
             while (m_e.readNextStartElement()) {
                 if (m_e.name() == "fret") {
                     fret = m_e.readInt();
                 } else if (m_e.name() == "string") {
                     string = m_e.readInt();
                     actualString = fd->strings() - string;
+                } else if (m_e.name() == "fingering") {
+                    finger = m_e.readInt();
                 } else if (m_e.name() == "barre") {
                     // Keep barres to be added later
                     String t = m_e.attribute("type");
@@ -7802,6 +7806,9 @@ FretDiagram* MusicXmlParserPass2::frame()
             m_logger->logDebugInfo(String(u"FretDiagram::readMusicXml string %1 fret %2").arg(string).arg(fret), &m_e);
 
             if (string > 0) {
+                if (finger > 0 && actualString >= 0 && actualString < fd->strings()) {
+                    fingers[actualString] = finger;
+                }
                 if (fret == 0) {
                     fd->setMarker(actualString, FretMarkerType::CIRCLE);
                 } else if (fret > 0) {
@@ -7843,6 +7850,16 @@ FretDiagram* MusicXmlParserPass2::frame()
         fd->setBarre(startString, endString, fret - fd->fretOffset());
     }
 
+    if (!fingers.empty()) {
+        std::vector<int> fingering(fd->strings(), 0);
+        for (const auto& [string, finger] : fingers) {
+            if (string < fd->strings()) {
+                fingering[string] = finger;
+            }
+        }
+        fd->setFingering(std::move(fingering));
+        fd->setShowFingering(true);
+    }
     return fd;
 }
 

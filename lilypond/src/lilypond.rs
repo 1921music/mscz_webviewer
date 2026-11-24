@@ -116,7 +116,7 @@ fn note_name(language: &str, name: &str) -> Option<(usize, i8)> {
     None
 }
 
-fn pitch_prefix<'s>(word: &'s str, lang: &str) -> Option<(Pitch, &'s str)> {
+pub(crate) fn pitch_prefix<'s>(word: &'s str, lang: &str) -> Option<(Pitch, &'s str)> {
     let name_end = word.bytes().take_while(u8::is_ascii_alphabetic).count();
     let (step, alter) = note_name(lang, &word[..name_end])?;
     let mut octave = 3_i32;
@@ -155,6 +155,8 @@ struct Scope {
 struct Reader<'s> {
     track: Track,
     chords: bool,
+    drums: bool,
+    breath_mark: &'static str,
     language: &'s str,
     duration: Duration,
     relative_to: Option<Pitch>,
@@ -180,6 +182,8 @@ impl<'s> Reader<'s> {
         Self {
             track: Track::default(),
             chords,
+            drums: false,
+            breath_mark: "breath-mark",
             language,
             duration: Duration::default(),
             relative_to: None,
@@ -358,14 +362,48 @@ impl<'s> Reader<'s> {
         Some((pitch, tail))
     }
 
+    fn note_pitch<'a>(
+        &mut self,
+        word: &'a str,
+        cursor: &mut Cursor<'_, 'a>,
+    ) -> Option<(Pitch, Option<Drum>, &'a str)> {
+        if !self.drums {
+            return self
+                .read_pitch(word, cursor)
+                .map(|(pitch, rest)| (pitch, None, rest));
+        }
+        let end = word.bytes().take_while(u8::is_ascii_alphabetic).count();
+        // Default LilyPond drums-style places bassdrum three staff steps below
+        // the middle line and snare one step above it.
+        let (midi_key, name, step, octave, notehead) = match &word[..end] {
+            "bd" | "bassdrum" => (36, "Bass Drum", 3, 4, "normal"),
+            "sn" | "snare" => (38, "Acoustic Snare", 0, 5, "normal"),
+            "hh" | "hihat" => (42, "Hi-Hat", 2, 5, "x"),
+            _ => return None,
+        };
+        Some((
+            Pitch {
+                step,
+                alter: 0,
+                octave,
+            },
+            Some(Drum {
+                midi_key,
+                name,
+                notehead,
+            }),
+            &word[end..],
+        ))
+    }
+
     fn durable(
         &mut self,
         word: &'s str,
         cursor: &mut Cursor<'_, 's>,
         scope: Scope,
     ) -> Result<bool> {
-        let parsed = if let Some((pitch, rest)) = self.read_pitch(word, cursor) {
-            Some((Some(pitch), None, rest))
+        let parsed = if let Some((pitch, drum, rest)) = self.note_pitch(word, cursor) {
+            Some((Some((pitch, drum)), None, rest))
         } else if let Some(ch @ ('r' | 'R' | 's')) = word.chars().next() {
             (!word[1..].starts_with(|c: char| c.is_ascii_alphabetic())).then_some((
                 None,
@@ -381,8 +419,9 @@ impl<'s> Reader<'s> {
         let tail = self.read_duration(tail, cursor)?;
         let members = pitch
             .into_iter()
-            .map(|pitch| Member {
+            .map(|(pitch, drum)| Member {
                 pitch,
+                drum,
                 parentheses: false,
                 harmonic: false,
             })
@@ -422,14 +461,15 @@ impl<'s> Reader<'s> {
                         .harmonic = true
                 }
                 word => {
-                    let (pitch, "") = self
-                        .read_pitch(word, &mut chord)
+                    let (pitch, drum, "") = self
+                        .note_pitch(word, &mut chord)
                         .ok_or_else(|| format!("Expected a chord pitch, found {word:?}"))?
                     else {
                         return Err(format!("Unsupported chord member {word:?}"));
                     };
                     members.push(Member {
                         pitch,
+                        drum,
                         parentheses,
                         harmonic: false,
                     });
@@ -620,11 +660,16 @@ impl<'s> Reader<'s> {
                 self.one(cursor, scope)?;
             }
             "\\chordmode" | "\\notemode" => self.one(cursor, scope)?,
+            "\\drummode" | "\\drums" if !self.chords => {
+                let previous = std::mem::replace(&mut self.drums, true);
+                self.one(cursor, scope)?;
+                self.drums = previous;
+            }
             "\\with" => {
                 cursor.take("context settings")?;
             }
             "\\tuplet" | "\\times" => self.tuplet(word, cursor, scope)?,
-            "\\grace" | "\\acciaccatura" | "\\appoggiatura" | "\\slashedGrace" => {
+            "\\grace" | "\\acciaccatura" | "\\appoggiatura" | "\\slashedGrace" | "\\myGrace" => {
                 check(scope.grace.is_none(), "Nested grace group")?;
                 let first = self.track.events.len();
                 self.one(
@@ -709,6 +754,21 @@ impl<'s> Reader<'s> {
                     .or_default()
                     .extend(markup_directions(markup, Some("above"), word == "\\mark"));
             }
+            "\\myWordMark" => {
+                let label = cursor
+                    .take("section label")?
+                    .text()
+                    .ok_or("Expected a string after myWordMark")?;
+                self.track
+                    .directions
+                    .entry(self.track.position)
+                    .or_default()
+                    .push(Direction::new(
+                        "rehearsal",
+                        Some("above"),
+                        syntax::unquote(label),
+                    ));
+            }
             "\\myMark" => {
                 let label = cursor
                     .take("rehearsal mark label")?
@@ -717,6 +777,18 @@ impl<'s> Reader<'s> {
                 self.track
                     .marks
                     .insert(self.track.position, syntax::unquote(label));
+            }
+            "\\startRepeat" | "\\endRepeat" => {
+                let command = if word == "\\startRepeat" {
+                    "start-repeat"
+                } else {
+                    "end-repeat"
+                };
+                self.track
+                    .repeat_commands
+                    .entry(self.track.position)
+                    .or_default()
+                    .push(command.into());
             }
             "\\endBar" | "\\endTune" => {
                 self.track.final_barlines.insert(self.track.position);
@@ -745,10 +817,13 @@ impl<'s> Reader<'s> {
                 }
             }
             "\\numericTimeSignature" if !self.chords => self.numeric_time = true,
-            "\\voiceOne" | "\\voiceTwo" | "\\oneVoice" if !self.chords => {
+            "\\voiceOne" | "\\voiceTwo" | "\\voiceThree" | "\\oneVoice" | "\\stemUp"
+            | "\\stemDown" | "\\stemNeutral"
+                if !self.chords =>
+            {
                 self.stem = match word {
-                    "\\voiceOne" => Some("up"),
-                    "\\voiceTwo" => Some("down"),
+                    "\\voiceOne" | "\\voiceThree" | "\\stemUp" => Some("up"),
+                    "\\voiceTwo" | "\\stemDown" => Some("down"),
                     _ => None,
                 };
             }
@@ -803,6 +878,29 @@ impl<'s> Reader<'s> {
                 self.override_command(word, cursor)?
             }
             "\\set" if !self.chords => self.property(cursor)?,
+            "\\breathe" if !self.chords => {
+                let value = self.breath_mark;
+                self.last_event()?.markings.push(Mark {
+                    group: "articulations",
+                    value: value.into(),
+                    placement: None,
+                });
+            }
+            "\\segno" if !self.chords => {
+                self.last_event()?
+                    .directions
+                    .push(Direction::new("segno", Some("above"), ""))
+            }
+            "\\sustainOn" | "\\sustainOff" if !self.chords => {
+                let kind = if word == "\\sustainOn" {
+                    "start"
+                } else {
+                    "stop"
+                };
+                self.last_event()?
+                    .directions
+                    .push(Direction::new("pedal", Some("below"), kind));
+            }
             "\\ottava" | "\\bendAfter" if !self.chords => self.pitch_mark(word, cursor)?,
             "\\octaveCheck" if self.relative_to.is_some() => {
                 self.relative_to =
@@ -838,6 +936,7 @@ impl<'s> Reader<'s> {
             }
             "\\startChords"
             | "\\endChords"
+            | "\\startTune"
             | "\\startSong"
             | "\\endSong"
             | "\\startPart"
@@ -1030,6 +1129,7 @@ impl<'s> Reader<'s> {
             .scheme()
             .ok_or("Expected a literal property value")?;
         match property {
+            "timing" if field == "Score.timing" && matches!(expression, "##f" | "#f") => {}
             "measureLength" => {
                 let mut parts = expression
                     .trim_start_matches("#(")
@@ -1045,6 +1145,12 @@ impl<'s> Reader<'s> {
                 check(parts.next().is_none(), "Unsupported measure length")?;
                 self.track.measure_lengths.insert(self.track.position, size);
             }
+            // The LilyPond viewer already uses this GM program for the melody.
+            "midiInstrument" if field == "Staff.midiInstrument" && expression == "#\"flute\"" => {}
+            "instrumentName"
+                if field == "PianoStaff.instrumentName" && expression == "#\"Piano\"" => {}
+            "midiInstrument"
+                if field == "PianoStaff.midiInstrument" && expression == "#\"acoustic grand\"" => {}
             "repeatCommands" => {
                 let tokens = scheme_items(expression);
                 self.track
@@ -1073,6 +1179,16 @@ impl<'s> Reader<'s> {
             "\\revert" if !once && target == "NoteHead.style" => self.notehead = "normal",
             "\\override" => {
                 check(cursor.eat("="), "Expected = after override")?;
+                if target == "BreathingSign.text" && syntax::is_markup(cursor.peek_word()) {
+                    cursor.next();
+                    let glyph = syntax::markup_text(syntax::markup_argument(cursor)?);
+                    check(
+                        glyph.trim() == "scripts.caesura.straight",
+                        "Unsupported breathing glyph",
+                    )?;
+                    self.breath_mark = "caesura";
+                    return Ok(());
+                }
                 let value = cursor
                     .take("override value")?
                     .scheme()
@@ -1162,6 +1278,7 @@ impl<'s> Reader<'s> {
         self.stem = stem;
         self.lyric_voice = lyric_voice;
         let mut second = Reader::new(false, self.language);
+        second.drums = self.drums;
         second.duration = self.duration;
         second.relative_to = self.relative_to;
         second.track.position = start;
@@ -1171,7 +1288,6 @@ impl<'s> Reader<'s> {
             second.seq(&nodes[cursor.index..], scope)?;
         } else {
             second.one(&mut cursor, scope)?;
-            check(cursor.peek().is_none(), "Expected two simultaneous voices")?;
         }
         check(
             second.track.secondary.is_empty(),
@@ -1181,6 +1297,26 @@ impl<'s> Reader<'s> {
         self.track.position = self.track.position.max(second.track.position);
         self.duration = second.duration;
         self.relative_to = second.relative_to;
+        let mut index = 0;
+        while cursor.peek().is_some() && separator.is_none() {
+            let mut extra = Reader::new(false, self.language);
+            extra.drums = self.drums;
+            extra.duration = self.duration;
+            extra.relative_to = self.relative_to;
+            extra.track.position = start;
+            extra.lyric_voice = u8::try_from(index + 3).map_err(|_| "Too many voices")?;
+            extra.one(&mut cursor, scope)?;
+            check(
+                extra.track.secondary.is_empty(),
+                "Nested simultaneous voices",
+            )?;
+            if self.track.extra_voices.len() <= index {
+                self.track.extra_voices.push(Vec::new());
+            }
+            self.track.extra_voices[index].extend(extra.track.events);
+            self.track.position = self.track.position.max(extra.track.position);
+            index += 1;
+        }
         Ok(())
     }
 
@@ -1418,6 +1554,21 @@ fn relative_expression<'a, 's>(cursor: &Cursor<'a, 's>) -> Option<&'a Node<'s>> 
     cursor.peek()
 }
 
+pub(crate) fn read_track<'s>(
+    music: &[Node<'s>],
+    document: &[Node<'s>],
+    chords: bool,
+) -> Result<Track> {
+    let start = music.first().map_or(0, |node| node.start);
+    let mut reader = Reader::new(chords, pitch_language(document, start));
+    reader.seq(music, Scope::default())?;
+    check(
+        reader.next_chord_parenthesis.is_none() && !reader.alternate_chords_open,
+        "Unclosed chord parenthesis",
+    )?;
+    Ok(reader.track)
+}
+
 #[derive(Clone, Copy)]
 struct Context<'a, 's> {
     kind: &'s str,
@@ -1427,7 +1578,9 @@ struct Context<'a, 's> {
     relative_scope: Option<(usize, Pitch)>,
 }
 
-fn context_head<'a, 's>(cursor: &mut Cursor<'a, 's>) -> Result<(&'s str, Option<&'s str>)> {
+pub(crate) fn context_head<'a, 's>(
+    cursor: &mut Cursor<'a, 's>,
+) -> Result<(&'s str, Option<&'s str>)> {
     let kind = cursor.take("context type")?.word();
     let label = if cursor.eat("=") {
         cursor.eat("=");
@@ -1499,7 +1652,13 @@ pub fn read_score<'a, 's>(nodes: &'a [Node<'s>]) -> Result<Score<'a, 's>> {
         scores.len() == 1,
         format!("Expected one score, found {}", scores.len()),
     )?;
-    let (score, book) = scores[0];
+    read_score_block(nodes, scores[0])
+}
+
+pub(crate) fn read_score_block<'a, 's>(
+    nodes: &'a [Node<'s>],
+    (score, book): ScoreBlock<'a, 's>,
+) -> Result<Score<'a, 's>> {
     let mut declarations = Vec::new();
     contexts(score, nodes, None, &mut declarations)?;
     declarations.sort_by_key(|context| context.start);
@@ -1510,6 +1669,7 @@ pub fn read_score<'a, 's>(nodes: &'a [Node<'s>]) -> Result<Score<'a, 's>> {
     let mut relative_pitches = BTreeMap::new();
     for declaration in declarations.iter() {
         match declaration.kind {
+            "FretBoards" => return Err("Guitar fretboard diagrams are not supported yet".into()),
             "Staff" | "ChordNames" => {
                 let is_chords = declaration.kind == "ChordNames";
                 let track = if is_chords { &mut chords } else { &mut melody };
@@ -1640,9 +1800,9 @@ fn pitch_language<'s>(document: &[Node<'s>], before: usize) -> &'s str {
     latest(document, before).unwrap_or("nederlands")
 }
 
-type ScoreBlock<'a, 's> = (&'a [Node<'s>], Option<&'a [Node<'s>]>);
+pub(crate) type ScoreBlock<'a, 's> = (&'a [Node<'s>], Option<&'a [Node<'s>]>);
 
-fn collect_scores<'a, 's>(
+pub(crate) fn collect_scores<'a, 's>(
     nodes: &'a [Node<'s>],
     book: Option<&'a [Node<'s>]>,
     out: &mut Vec<ScoreBlock<'a, 's>>,
@@ -1696,7 +1856,7 @@ fn collect_lyrics<'a, 's>(
     Ok(())
 }
 
-fn read_info(nodes: &[Node<'_>]) -> Info {
+pub(crate) fn read_info(nodes: &[Node<'_>]) -> Info {
     let mut info = Info::default();
     let mut before_score = true;
     let mut cursor = Cursor::new(nodes);

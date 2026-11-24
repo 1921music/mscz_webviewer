@@ -27,6 +27,7 @@
 
 #include "draw/fontmetrics.h"
 #include "draw/svgrenderer.h"
+#include "engraving/iengravingfontsprovider.h"
 
 #include "rendering/paintoptions.h"
 #include "style/style.h"
@@ -2403,7 +2404,17 @@ void TDraw::draw(const Note* item, Painter* painter, const PaintOptions& opt)
             item->drawSymbol(ldata->cachedSymNull.value(), painter);
             painter->restore();
         }
-        item->drawSymbol(ldata->cachedNoteheadSym.value(), painter);
+        const SymId symbol = ldata->cachedNoteheadSym.value();
+        if (item->fixed() && item->headGroup() == NoteHeadGroup::HEAD_SLASH
+            && item->score()->metaTag(u"msczLilyPondRhythm") == u"yes"
+            && !item->score()->engravingFont()->isValid(symbol)) {
+            const auto font = item->score()->engravingFonts()->fontByName("MuseJazz");
+            if (font && font->isValid(symbol)) {
+                font->draw(symbol, painter, item->magS(), PointF());
+                return;
+            }
+        }
+        item->drawSymbol(symbol, painter);
     }
 }
 

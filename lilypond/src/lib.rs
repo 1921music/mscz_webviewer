@@ -1,3 +1,5 @@
+mod ensemble;
+mod fretboard;
 mod lilypond;
 mod model;
 mod musicxml;
@@ -103,6 +105,9 @@ pub fn convert(source: &str, options: Options<'_>) -> Result<String> {
         "Choose one OpenBook entry with --title",
     )?;
     let tokens = syntax::lex(source)?;
+    if let Some(xml) = ensemble::convert(&tokens, &options)? {
+        return Ok(xml);
+    }
     let mut score = lilypond::read_score(&tokens)?;
     let plan = score::plan(&mut score, options.page_breaks)?;
     musicxml::write(&score, &plan, options.title, options.measure_numbers)

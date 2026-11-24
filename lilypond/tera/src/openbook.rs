@@ -61,10 +61,33 @@ fn row(output: &mut String, text: &str, title: bool) {
 
 pub fn render(source: &str) -> Result<String> {
     let source = source.trim_start_matches('\u{feff}').trim_start();
-    let (metadata, body) = source
-        .strip_prefix("{#")
-        .and_then(|s| s.split_once("#}"))
-        .ok_or("Expected OpenBook .ly.tera metadata at the start of the file")?;
+    let (prefix, rest) = source
+        .split_once("{#")
+        .ok_or("Expected OpenBook song metadata")?;
+    let (metadata, body) = rest
+        .split_once("#}")
+        .ok_or("Unclosed OpenBook song metadata")?;
+    // OpenBook also places imports of shared macros before its metadata.
+    let shared_macros = if prefix.is_empty() {
+        None
+    } else {
+        let import = prefix
+            .trim()
+            .strip_prefix("{%")
+            .and_then(|s| s.strip_suffix("%}"))
+            .ok_or("Expected a shared macro import before OpenBook song metadata")?;
+        let words: Vec<_> = import.trim_matches('-').split_whitespace().collect();
+        let [
+            "import",
+            "\"src/include/defs.ly.tera\"" | "'src/include/defs.ly.tera'",
+            "as",
+            alias,
+        ] = words.as_slice()
+        else {
+            return Err("Unsupported OpenBook shared macro import".into());
+        };
+        Some(*alias)
+    };
     let mut root = Fields::new();
     let mut attributes = Fields::new();
     let mut versions: BTreeMap<&str, Fields<'_>> = BTreeMap::new();
@@ -110,14 +133,34 @@ pub fn render(source: &str) -> Result<String> {
     let heb = attributes.get("heb").is_some_and(|s| *s == "true");
     let mut tera = Tera::default();
     let template = "song.ly.tera";
+    // Translate the parameterless macros used by the OpenBook templates to
+    // Tera 2 components. The actual music and control flow still run in Tera.
+    let song;
+    let body = if let Some(alias) = shared_macros {
+        tera.add_raw_template("src/include/defs.ly.tera", include_str!("defs.ly.tera"))
+            .map_err(|error| format!("Could not register OpenBook macros: {error}"))?;
+        song = body
+            .replace("{% macro chords() %}", "{% component song.chords() %}")
+            .replace("{% endmacro %}", "{% endcomponent song.chords %}")
+            .replace("{{ self::chords() }}", "{{<song.chords />}}")
+            .replace(
+                &format!("{{{{ {alias}::chordDefs() }}}}"),
+                "{{<defs.chordDefs />}}",
+            );
+        song.as_str()
+    } else {
+        body
+    };
     tera.add_raw_template(template, body)
         .map_err(|error| format!("Could not compile OpenBook template: {error}"))?;
-    let part = |name: &str| {
+    let render_part = |name: &str| {
         let mut context = Context::new();
         context.insert("part", name);
-        let music = tera
-            .render(template, &context)
-            .map_err(|error| format!("Could not render OpenBook part {name}: {error}"))?;
+        tera.render(template, &context)
+            .map_err(|error| format!("Could not render OpenBook part {name}: {error}"))
+    };
+    let part = |name: &str| {
+        let music = render_part(name)?;
         check(
             !music.trim().is_empty(),
             format!("Empty or missing OpenBook part {name}"),
@@ -176,6 +219,11 @@ pub fn render(source: &str) -> Result<String> {
     }
 
     if enabled("doOwn") {
+        let definitions = render_part("Defs")?;
+        if !definitions.trim().is_empty() {
+            ly.push_str(&definitions);
+            ly.push('\n');
+        }
         ly.push_str(&part("Own")?);
     } else {
         if enabled("doPrep") {
@@ -248,4 +296,28 @@ pub fn render(source: &str) -> Result<String> {
     }
     ly.push_str("}\n");
     Ok(ly)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::render;
+
+    #[test]
+    fn rockbook_macros_expand_as_tera_components() {
+        let ly = render(
+            r#"{% import "src/include/defs.ly.tera" as shared %}{#
+default_version = "Own"
+[attributes]
+title = "Example"
+[versions.Own]
+doOwn = true
+#}
+{% macro chords() %}\chordmode { c1 | }{% endmacro %}
+{% if part == "Own" %}\score { << {{ shared::chordDefs() }} {{ self::chords() }} >> }{% endif %}
+"#,
+        )
+        .unwrap();
+        assert!(ly.contains(r#"\new ChordNames="Chords""#));
+        assert!(ly.contains(r"\chordmode { c1 | }"));
+    }
 }
