@@ -99,10 +99,9 @@ The HTML contains the JavaScript, WASM engine, fonts, and other required resourc
 
 Open LilyPond lead sheets as `.ly` or individual OpenBook `.ly.tera` files.
 A complete OpenBook `.ly` offers a song picker. Templates use their declared
-default version. The converter runs locally. The HTTP edition fetches the
-LilyPond WASM on the first LilyPond file. The separate Tera 2.4.0 WASM
-expands OpenBook patterns and loads only when a template is opened. The
-standalone HTML decodes and initializes that module at the same point.
+default version. The local conversion and Tera 2.4.0 template expansion share
+one WASM module. The HTTP edition fetches it on the first LilyPond file.
+The standalone HTML decodes and initializes it at the same point.
 OpenBook templates can use RockBook's shared chord macros. LilyPond import also
 supports piano scores, three-voice guitar notation, and bass drum, snare and hi-hat.
 Files with several printable scores sharing a part layout display them in
@@ -118,19 +117,18 @@ preserves the source's system breaks when changing appearance.
 
 ### File sizes
 
-Measured on November 24, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
+Measured on November 25, 2026, with default EAS playback. MiB = 1,048,576 bytes; KiB = 1,024 bytes.
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,703,391** | **4.49 MiB** |
+| **Complete standalone HTML** (`docs/index.html`) | **4,656,800** | **4.44 MiB** |
 | WASM engine (`mscz-engine.wasm`) | 4,819,246 | 4.60 MiB |
-| LilyPond converter WASM (`lilypond.wasm`) | 492,804 | 481.25 KiB |
-| Tera 2 WASM (`lilypond-tera.wasm`) | 682,928 | 666.92 KiB |
+| LilyPond and OpenBook WASM (`lilypond.wasm`) | 1,051,627 | 1.00 MiB |
 | Engine JavaScript (`mscz-engine.js`) | 19,253 | 18.80 KiB |
 | JavaScript wrapper (`mscz.js`) | 9,560 | 9.34 KiB |
 | Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.49 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.44 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
@@ -262,15 +260,14 @@ LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.l
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,703,391** | **4.49 MiB** |
+| **単一 HTML 全体**（`docs/index.html`） | **4,656,800** | **4.44 MiB** |
 | WASM 本体（`mscz-engine.wasm`） | 4,819,246 | 4.60 MiB |
-| LilyPond 変換 WASM (`lilypond.wasm`) | 492,804 | 481.25 KiB |
-| Tera 2 WASM (`lilypond-tera.wasm`) | 682,928 | 666.92 KiB |
+| LilyPond と OpenBook の WASM（`lilypond.wasm`） | 1,051,627 | 1.00 MiB |
 | エンジン JavaScript（`mscz-engine.js`） | 19,253 | 18.80 KiB |
 | JavaScript ラッパー（`mscz.js`） | 9,560 | 9.34 KiB |
 | フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.49 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.44 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
@@ -388,8 +385,8 @@ are presentation state, never score edits.
 
 ### LilyPond parity check
 
-The core Rust converter builds for native and WebAssembly without registry
-crates. The separate OpenBook template WASM uses the locked Tera 2 and Serde
+The native Rust converter builds without registry crates. The browser WASM
+links it with the OpenBook template renderer using locked Tera 2 and Serde
 crates. Cargo fetches these dependencies on the first web build.
 Use the [OpenBook](https://github.com/veltzer/book-openbook) project's
 rendered book and the corresponding directory of source templates.

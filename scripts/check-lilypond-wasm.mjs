@@ -4,16 +4,16 @@ import { createHash } from 'node:crypto'
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { execFile as execFileCallback } from 'node:child_process'
 import { tmpdir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { loadLilyPond, loadLilyPondTera, openBookEntries } from '../web/lilypond.mjs'
+import { loadLilyPond, openBookEntries } from '../web/lilypond.mjs'
 
 const execFile = promisify(execFileCallback)
 const encode = new TextEncoder()
 const hash = bytes => createHash('sha256').update(bytes).digest('hex')
 const [wasm, cli, book, templateDir] = process.argv.slice(2)
 if (!book) throw new Error('Expected WASM, native CLI and rendered openbook.ly')
-const convert = await loadLilyPond(await readFile(wasm))
+const { toMusicXml: convert, expandTemplate: renderTemplate } = await loadLilyPond(await readFile(wasm))
 const source = await readFile(book, 'utf8')
 const entries = openBookEntries(source)
 if (!entries.length) throw new Error('Could not find any OpenBook entries')
@@ -45,7 +45,6 @@ try {
 console.log('WASM .ly byte-identical:', entries.length - failed, '/', entries.length)
 
 if (templateDir) {
-  const renderTemplate = await loadLilyPondTera(await readFile(join(dirname(wasm), 'lilypond-tera.wasm')))
   const templates = (await readdir(templateDir, { recursive: true })).filter(path => path.endsWith('.ly.tera'))
   if (templates.length !== entries.length) {
     console.error('Template count:', templates.length, 'Expected:', entries.length)

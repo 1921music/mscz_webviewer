@@ -50,11 +50,11 @@ for (const offline of [false, true]) {
     let converterRequests = 0
     let teraRequests = 0
     await page.addInitScript(() => {
-      window.teraInstantiations = 0
+      window.converterInstantiations = 0
       const instantiate = WebAssembly.instantiate
       WebAssembly.instantiate = async (...args) => {
         const result = await instantiate(...args)
-        if ((result.instance || result).exports.lilypond_render_template) window.teraInstantiations++
+        if ((result.instance || result).exports.lilypond_render_template) window.converterInstantiations++
         return result
       }
     })
@@ -86,7 +86,7 @@ for (const offline of [false, true]) {
     await expect(status).toContainText('drawn in')
     expect((await notation(page)).fingerprint).not.toEqual(before.fingerprint)
     expect(teraRequests).toBe(0)
-    expect(await page.evaluate(() => window.teraInstantiations)).toBe(0)
+    expect(await page.evaluate(() => window.converterInstantiations)).toBe(1)
 
     await picker.setInputFiles(file('bad.ly', '\\score {}'))
     await expect(status).toContainText('No music staff or chords')
@@ -98,6 +98,9 @@ for (const offline of [false, true]) {
       document.dispatchEvent(new DragEvent('drop', { dataTransfer: drop, bubbles: true, cancelable: true }))
     }, tera)
     await expect(page.locator('#pages')).toContainText('A Tune')
+    expect(converterRequests).toBe(offline ? 0 : 1)
+    expect(teraRequests).toBe(0)
+    expect(await page.evaluate(() => window.converterInstantiations)).toBe(1)
 
     if (process.env.MSCZ_PLAYBACK !== 'OFF') {
       const audio = await page.evaluate(async () => {
@@ -137,8 +140,8 @@ for (const offline of [false, true]) {
     await expect(status).toContainText('drawn in')
     expect(await notation(page)).toEqual(before)
     expect(converterRequests).toBe(offline ? 0 : 1)
-    expect(teraRequests).toBe(offline ? 0 : 1)
-    expect(await page.evaluate(() => window.teraInstantiations)).toBe(1)
+    expect(teraRequests).toBe(0)
+    expect(await page.evaluate(() => window.converterInstantiations)).toBe(1)
     expect(errors).toEqual([])
   })
 }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! Assemble the default lead-sheet version of an OpenBook song. The ordering
+//! Expand the default lead-sheet version of an OpenBook song. The ordering
 //! and labels follow OpenBook's common.ly.weave and scripts/drivers.py.
 use crate::{Result, check};
 use std::collections::BTreeMap;

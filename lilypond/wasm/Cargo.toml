@@ -1,5 +1,5 @@
 [package]
-name = "lilypond-tera"
+name = "lilypond-wasm"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-3.0-only"
@@ -8,6 +8,7 @@ license = "GPL-3.0-only"
 crate-type = ["cdylib"]
 
 [dependencies]
+lilypond-musicxml = { path = ".." }
 tera = { version = "=2.4.0", default-features = false }
 
 [profile.release]

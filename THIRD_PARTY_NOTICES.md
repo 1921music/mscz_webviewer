@@ -83,7 +83,7 @@ contributors, under GPL-3.0. Song files are supplied by the user.
 
 The optional OpenBook template module includes [Tera 2.4.0](https://github.com/Keats/tera)
 and [Serde 1.0.229](https://github.com/serde-rs/serde). Their MIT license notices
-are in [lilypond/tera/NOTICE.txt](lilypond/tera/NOTICE.txt) and are included in
+are in [lilypond/wasm/NOTICE.txt](lilypond/wasm/NOTICE.txt) and are included in
 the standalone HTML.
 
 

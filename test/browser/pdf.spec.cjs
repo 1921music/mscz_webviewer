@@ -193,15 +193,19 @@ for (const standalone of [false, true]) {
 
 test('Score appearance is reversible, composes with transpose, and is reflected in PDF', async ({ page, context }, testInfo) => {
   const { unexpected } = await network(context)
-  const source = String.raw`\bookpart {
-    \markup \fill-line { \larger "Appearance PDF" }
-    \score { <<
-      \new Staff \new Voice = "melody" { c4 d e f | }
-      \new ChordNames \chordmode { c1 | }
-      \new Lyrics \lyricsto "melody" { \lyricmode { testSyllable -- verse __ _ } }
-    >> }
-  }`
-  await open(page, true, testInfo, { name: 'appearance.ly', mimeType: 'text/plain', buffer: Buffer.from(source) })
+  const source = String.raw`{#
+default_version = "Fake"
+[attributes]
+title = "Appearance PDF"
+[versions.Fake]
+doVoice = true
+doChords = true
+doLyrics = true
+#}
+{% if part == "VoiceFake" %}{ c4 d e f | }{% endif %}
+{% if part == "ChordsFake" %}\chordmode { c1 | }{% endif %}
+{% if part == "LyricsFake" %}\lyricmode { testSyllable -- verse __ _ }{% endif %}`
+  await open(page, true, testInfo, { name: 'appearance.ly.tera', mimeType: 'text/plain', buffer: Buffer.from(source) })
   const lyrics = page.locator('#showLyrics')
   const font = page.locator('#scoreFont')
   const pdf = page.locator('#savePdf')

@@ -3,9 +3,14 @@
 version = 4
 
 [[package]]
-name = "lilypond-tera"
+name = "lilypond-musicxml"
+version = "0.1.0"
+
+[[package]]
+name = "lilypond-wasm"
 version = "0.1.0"
 dependencies = [
+ "lilypond-musicxml",
  "tera",
 ]
 

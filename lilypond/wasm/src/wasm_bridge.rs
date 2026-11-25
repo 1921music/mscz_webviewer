@@ -2,7 +2,7 @@
 use std::cell::RefCell;
 
 thread_local! {
-    // A conversion is one synchronous JS call. The buffers stay owned by
+    // Each operation is one synchronous JS call. The buffers stay owned by
     // Rust and are reused across calls. JS copies the reply before the next.
     static INPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
     static OUTPUT: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };

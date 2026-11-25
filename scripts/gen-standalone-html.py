@@ -62,8 +62,6 @@ def main():
     html = replace_once(html, "from './lilypond.mjs'", f"from '{lilypond}'")
     html = replace_once(html, "loadLilyPond().catch",
                         "loadLilyPond(decodeEmbedded(lilypondAsset)).catch")
-    html = replace_once(html, "loadLilyPondTera().catch",
-                        "loadLilyPondTera(decodeEmbedded(lilypondTeraAsset)).catch")
 
     resources = []
     names = set()
@@ -77,8 +75,7 @@ def main():
         resources.append({"name": entry["name"], "data": compressed(path.read_bytes())})
     payload = {"module": compressed(wrapper.encode("utf-8")),
                "wasm": compressed((web / "mscz-engine.wasm").read_bytes()),
-               "lilypond": compressed((web / "lilypond.wasm").read_bytes()),
-               "lilypondTera": compressed((web / "lilypond-tera.wasm").read_bytes()), "resources": resources}
+               "lilypond": compressed((web / "lilypond.wasm").read_bytes()), "resources": resources}
     if "import { attachPlayback }" in html:
         playback = module_url((web / "playback.js").read_text(encoding="utf-8"))
         ui = replace_once((web / "playback-ui.js").read_text(encoding="utf-8"),
@@ -101,7 +98,6 @@ def main():
 // All engine assets are in this document. Reading a score uses the File API.
 let embeddedPayload
 let lilypondAsset
-let lilypondTeraAsset
 function readEmbeddedPayload () {
   if (!embeddedPayload) {
     const element = document.getElementById('mscz-embedded')
@@ -132,7 +128,6 @@ async function embeddedOptions () {
   const wasmBinary = await decodeEmbedded(payload.wasm)
   delete payload.wasm
   lilypondAsset = payload.lilypond
-  lilypondTeraAsset = payload.lilypondTera
   const resources = []
   for (const resource of payload.resources) {
     resources.push({ name: resource.name, bytes: await decodeEmbedded(resource.data) })

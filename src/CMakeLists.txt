@@ -173,36 +173,31 @@ if (EMSCRIPTEN)
     # is then a delivery decision rather than a build one.
     set(MSCZ_WEB_DIR "${CMAKE_BINARY_DIR}/web")
 
-    # Tera is separate from the LilyPond converter so plain .ly can skip it.
+    # Both stages share one WASM instance. The native converter remains independent of Tera.
     find_program(MSCZ_MISE_EXECUTABLE mise HINTS "$ENV{HOME}/.local/bin" REQUIRED)
     set(LILYPOND_DIR "${CMAKE_SOURCE_DIR}/lilypond")
     set(LILYPOND_TARGET "${CMAKE_BINARY_DIR}/rust-target")
     file(GLOB LILYPOND_SOURCES CONFIGURE_DEPENDS "${LILYPOND_DIR}/src/*.rs" "${LILYPOND_DIR}/src/guitar-fretboards.tsv")
-    file(GLOB TERA_SOURCES CONFIGURE_DEPENDS "${LILYPOND_DIR}/tera/src/*.rs")
-    function(mscz_rust_wasm output package directory)
-        add_custom_command(
-            OUTPUT "${output}"
-            COMMAND "${MSCZ_MISE_EXECUTABLE}" exec -- cargo build --locked --release
-                    --target wasm32-unknown-unknown --target-dir "${LILYPOND_TARGET}"
-                    --manifest-path "${directory}/Cargo.toml"
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    "${LILYPOND_TARGET}/wasm32-unknown-unknown/release/${package}.wasm"
-                    "${output}"
-            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            DEPENDS ${ARGN} "${directory}/Cargo.toml" "${directory}/Cargo.lock"
-                    "${CMAKE_SOURCE_DIR}/.mise.toml"
-            COMMENT "Building ${package} WebAssembly"
-            VERBATIM
-        )
-    endfunction()
+    set(LILYPOND_WASM_DIR "${LILYPOND_DIR}/wasm")
+    file(GLOB LILYPOND_WASM_SOURCES CONFIGURE_DEPENDS "${LILYPOND_WASM_DIR}/src/*.rs")
     set(LILYPOND_WASM "${MSCZ_WEB_DIR}/lilypond.wasm")
-    set(TERA_WASM "${MSCZ_WEB_DIR}/lilypond-tera.wasm")
-    mscz_rust_wasm("${LILYPOND_WASM}" lilypond_musicxml "${LILYPOND_DIR}" ${LILYPOND_SOURCES})
-    mscz_rust_wasm("${TERA_WASM}" lilypond_tera "${LILYPOND_DIR}/tera"
-        ${TERA_SOURCES} "${LILYPOND_DIR}/src/wasm_bridge.rs" "${LILYPOND_DIR}/tera/src/defs.ly.tera")
-    add_custom_target(lilypond_wasm ALL DEPENDS "${LILYPOND_WASM}" "${TERA_WASM}")
+    add_custom_command(
+        OUTPUT "${LILYPOND_WASM}"
+        COMMAND "${MSCZ_MISE_EXECUTABLE}" exec -- cargo build --locked --release
+                --target wasm32-unknown-unknown --target-dir "${LILYPOND_TARGET}"
+                --manifest-path "${LILYPOND_WASM_DIR}/Cargo.toml"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "${LILYPOND_TARGET}/wasm32-unknown-unknown/release/lilypond_wasm.wasm" "${LILYPOND_WASM}"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        DEPENDS ${LILYPOND_SOURCES} ${LILYPOND_WASM_SOURCES} "${LILYPOND_WASM_DIR}/src/defs.ly.tera"
+                "${LILYPOND_DIR}/Cargo.toml" "${LILYPOND_WASM_DIR}/Cargo.toml"
+                "${LILYPOND_WASM_DIR}/Cargo.lock" "${CMAKE_SOURCE_DIR}/.mise.toml"
+        COMMENT "Building LilyPond and OpenBook WebAssembly"
+        VERBATIM
+    )
+    add_custom_target(lilypond_wasm ALL DEPENDS "${LILYPOND_WASM}")
     configure_file("${CMAKE_SOURCE_DIR}/web/lilypond.mjs" "${MSCZ_WEB_DIR}/lilypond.mjs" COPYONLY)
-    configure_file("${LILYPOND_DIR}/tera/NOTICE.txt" "${MSCZ_WEB_DIR}/lilypond-tera-NOTICE.txt" COPYONLY)
+    configure_file("${LILYPOND_WASM_DIR}/NOTICE.txt" "${MSCZ_WEB_DIR}/lilypond-tera-NOTICE.txt" COPYONLY)
 
     # Select/copy assets at configure time. Track inputs so rebuilding after
     # a page, sound bank or notice edit also regenerates the standalone HTML.
@@ -247,7 +242,7 @@ if (EMSCRIPTEN)
         COMMAND ${Python3_EXECUTABLE} -I
                 "${CMAKE_CURRENT_LIST_DIR}/../scripts/gen-standalone-html.py"
                 --web "${MSCZ_WEB_DIR}"
-        DEPENDS mscz_wasm mscz_resource_manifest lilypond_wasm "${LILYPOND_WASM}" "${TERA_WASM}"
+        DEPENDS mscz_wasm mscz_resource_manifest lilypond_wasm "${LILYPOND_WASM}"
                 "${MSCZ_WEB_DIR}/lilypond-tera-NOTICE.txt"
                 "${MSCZ_WEB_DIR}/lilypond.mjs" ${MSCZ_PLAYBACK_DEPENDS}
                 "${MSCZ_RESOURCE_MANIFEST}"

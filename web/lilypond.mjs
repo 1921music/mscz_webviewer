@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-async function loadWasm (filename, binary) {
+async function loadWasm (binary) {
   if (!binary) {
-    const response = await fetch(new URL(filename, import.meta.url))
-    if (!response.ok) throw new Error('Could not load ' + filename)
+    const response = await fetch(new URL('./lilypond.wasm', import.meta.url))
+    if (!response.ok) throw new Error('Could not load lilypond.wasm')
     binary = await response.arrayBuffer()
   }
   const { instance } = await WebAssembly.instantiate(await binary)
@@ -25,17 +25,15 @@ function render (wasm, operation) {
 }
 
 export async function loadLilyPond (binary) {
-  const wasm = await loadWasm('./lilypond.wasm', binary)
+  const wasm = await loadWasm(binary)
   const convert = render(wasm, wasm.lilypond_convert)
-  return (source, { measureNumbers } = {}) => {
-    const numbering = measureNumbers === 'system' ? 1 : measureNumbers === 'none' ? 2 : 0
-    return convert(source, numbering)
+  return {
+    toMusicXml (source, { measureNumbers } = {}) {
+      const numbering = measureNumbers === 'system' ? 1 : measureNumbers === 'none' ? 2 : 0
+      return convert(source, numbering)
+    },
+    expandTemplate: render(wasm, wasm.lilypond_render_template)
   }
-}
-
-export async function loadLilyPondTera (binary) {
-  const wasm = await loadWasm('./lilypond-tera.wasm', binary)
-  return render(wasm, wasm.lilypond_render_template)
 }
 
 // Book and entry boundaries match the native CLI and the OpenBook source

@@ -8,7 +8,7 @@ description = "Convert the LilyPond lead sheets supported by the OpenBook protot
 [dependencies]
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib"]
 
 [profile.release]
 opt-level = "z"
