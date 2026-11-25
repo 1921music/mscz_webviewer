@@ -322,7 +322,7 @@ RealizedHarmony::PitchMap RealizedHarmony::getIntervals(int rootTpc, bool litera
                 int alter = 0;
                 size_t cutoff = c;
                 String degreeString = s;
-                static const std::wregex NOT_DIGITS = std::wregex(L"[^0-9]+");
+                static const muse::score_regex::wregex NOT_DIGITS = muse::score_regex::wregex(L"[^0-9]+");
                 degreeString.remove(NOT_DIGITS);
                 int deg = degreeString.toInt();
                 //account for if the flat/sharp is stuck to the end of add

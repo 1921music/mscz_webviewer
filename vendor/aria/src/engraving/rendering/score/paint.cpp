@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <tuple>
 
 #include "draw/painter.h"
 #include "dom/score.h"
@@ -250,10 +251,29 @@ void Paint::paintItems(Painter& painter, const std::vector<EngravingItem*>& item
     // same ink in a different order, which showed up as four extra <g>
     // wrappers because the attribute coalescing splits differently.
     //
-    // Stable means the order is discovery order, which is deterministic
-    // everywhere, so the output is reproducible and two builds can be
-    // diffed. Items that genuinely differ in z are unaffected.
-    std::stable_sort(sortedItems.begin(), sortedItems.end(), mu::engraving::elementLessThan);
+    // Lyric separators enter the system in the address order of their
+    // unmanaged spanners. Use score time and position for these ties so an
+    // allocation elsewhere cannot change their drawing order.
+    std::stable_sort(sortedItems.begin(), sortedItems.end(), [](const EngravingItem* left, const EngravingItem* right) {
+        if (elementLessThan(left, right)) {
+            return true;
+        }
+        if (elementLessThan(right, left)) {
+            return false;
+        }
+        const bool leftLyrics = left->isLyricsLineSegment();
+        const bool rightLyrics = right->isLyricsLineSegment();
+        if (leftLyrics != rightLyrics) {
+            return leftLyrics < rightLyrics;
+        }
+        if (!leftLyrics) {
+            return false;
+        }
+        const PointF leftPos = left->pagePos();
+        const PointF rightPos = right->pagePos();
+        return std::tuple(left->tick(), leftPos.x(), leftPos.y())
+               < std::tuple(right->tick(), rightPos.x(), rightPos.y());
+    });
 
     for (const EngravingItem* item : sortedItems) {
         if (!item->isInteractionAvailable()) {

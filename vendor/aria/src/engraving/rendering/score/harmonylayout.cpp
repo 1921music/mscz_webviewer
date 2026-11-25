@@ -563,7 +563,7 @@ void HarmonyLayout::doRenderSingleHarmony(Harmony* item, Harmony::LayoutData* ld
         const std::vector<RenderActionPtr>& bassNoteChordList
             = style.styleB(Sid::chordBassNoteStagger) ? chordList->renderListBassOffset : chordList->renderListBass;
 
-        static const std::wregex PATTERN_69 = std::wregex(L"6[,/]?9");
+        static const muse::score_regex::wregex PATTERN_69 = muse::score_regex::wregex(L"6[,/]?9");
         const bool is69 = info->textName().contains(PATTERN_69);
         const bool hasModifierStack = stackModifiers && (info->parsedChord() ? info->parsedChord()->modifierList().size() > 1 : false);
 

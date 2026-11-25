@@ -509,9 +509,9 @@ static std::pair<String, String> processInstrName(const String& name)
     n.replace(u"Bari", u"Baritone");
     std::pair<String, String> ret;
     // Find transposition information
-    static const std::regex transpositionRegex("(^|(?:\\s|\\u00A0))([ABCDEF][b#]?)((?:\\s|\\u00A0)|$)");
+    static const muse::score_regex::regex transpositionRegex("(^|(?:\\s|\\u00A0))([ABCDEF][b#]?)((?:\\s|\\u00A0)|$)");
     // Remove: ' in', part numbers '1, 2' which may be bracketed, any text after a slash
-    static const std::regex removeRegex("(?:\\s|\u00A0)in|(\\(?[0-9]([,](?:\\s|\u00A0)?)?)\\)?|\\.|(\\/.*)");
+    static const muse::score_regex::regex removeRegex("(?:\\s|\u00A0)in|(\\(?[0-9]([,](?:\\s|\u00A0)?)?)\\)?|\\.|(\\/.*)");
 
     const StringList results = n.search(transpositionRegex, { 2 });
     if (!results.empty()) {
@@ -1916,7 +1916,7 @@ static void cleanupUnterminatedTie(Tie* tie, const Score* score, bool fixForCros
 
 static bool isLikelyIncorrectPartName(const String& partName)
 {
-    static const std::wregex re(L"^P[0-9]+$");
+    static const muse::score_regex::wregex re(L"^P[0-9]+$");
     return partName.contains(re);
 }
 
@@ -2197,7 +2197,7 @@ static void createTimeTick(const Score* score, const Fraction& tick, const staff
 static String replacePartNameAccidentals(const String& partName)
 {
     String name = partName;
-    static const std::wregex re(L"((^|\\s|\\u00A0)[ABCDEF][b#\\u00AF]($|\\s|\\u00A0))");
+    static const muse::score_regex::wregex re(L"((^|\\s|\\u00A0)[ABCDEF][b#\\u00AF]($|\\s|\\u00A0))");
     StringList res = name.search(re, { 1 }, SplitBehavior::SkipEmptyParts);
     if (!res.empty()) {
         String transp = res.at(0).replace(u"b", u"♭").replace(u"¯", u"♭").replace(u"#", u"♯");
@@ -3568,7 +3568,7 @@ void MusicXmlParserDirection::direction(const String& partId,
                 m_tpoSound /= 60;
                 t = Factory::createTempoText(m_score->dummy()->segment());
                 String rawWordsText = m_wordsText;
-                static const std::regex re("(<.*?>)");
+                static const muse::score_regex::regex re("(<.*?>)");
                 rawWordsText.remove(re);
                 String sep = !m_metroText.empty() && !rawWordsText.empty() && rawWordsText.back() != ' ' ? u" " : String();
                 t->setXmlText(m_wordsText + sep + m_metroText);
@@ -3656,7 +3656,7 @@ void MusicXmlParserDirection::direction(const String& partId,
             }
 
             String fingeringStr = m_wordsText;
-            static const std::regex xmlFormating("(<.*?>)");
+            static const muse::score_regex::regex xmlFormating("(<.*?>)");
             fingeringStr.remove(xmlFormating).remove(u'\u00A0');
             if (isLikelyFingering(fingeringStr)) {
                 m_logger->logDebugInfo(String(u"Inferring fingering: %1").arg(fingeringStr));
@@ -3898,7 +3898,7 @@ bool MusicXmlParserDirection::isLikelyLegallyDownloaded(const Fraction& tick) co
            && m_rehearsalText.empty()
            && m_metroText.empty()
            && m_tpoSound < 0.1
-           && m_wordsText.contains(std::wregex(L"This music has been legally downloaded\\.(?:\\s|\\u00A0)Do not photocopy\\."));
+           && m_wordsText.contains(muse::score_regex::wregex(L"This music has been legally downloaded\\.(?:\\s|\\u00A0)Do not photocopy\\."));
 }
 
 bool MusicXmlParserDirection::isLikelyTempoText(const track_idx_t track) const
@@ -3931,7 +3931,7 @@ void MusicXmlParserDirection::handleFraction()
     }
 
     String rawWordsText = m_wordsText;
-    static const std::regex re("(<.*?>)");
+    static const muse::score_regex::regex re("(<.*?>)");
     rawWordsText.remove(re);
     rawWordsText = rawWordsText.simplified();
     //                         UTF-16 encoding: 0x00BC, 0x00BD, 0x00BE, 0x2150, 0x2151, 0x2152,  etc...
@@ -3957,7 +3957,7 @@ bool MusicXmlParserDirection::isLikelyTempoLine(const track_idx_t track) const
     }
 
     const String plainText = MScoreTextToMusicXml::toPlainText(m_wordsText.simplified());
-    static const std::wregex re(L"(^|(?:\\s|\u00A0))(accel|faster|mosso|rit|rubato|slower|stretto)", std::regex_constants::icase);
+    static const muse::score_regex::wregex re(L"(^|(?:\\s|\u00A0))(accel|faster|mosso|rit|rubato|slower|stretto)", muse::score_regex::regex_constants::icase);
 
     return plainText.contains(re);
 }
@@ -4311,7 +4311,7 @@ static const String getMarkerId(const String& words)
 {
     // Helper function to set the marker ID string
     // eg. extract 'II' from 'To Coda II'
-    static const std::regex number("(i{0,3})");
+    static const muse::score_regex::regex number("(i{0,3})");
     const StringList nums = words.search(number, { 1 },  SplitBehavior::SkipEmptyParts);
     if (!nums.empty()) {
         return nums.at(0);
@@ -4321,16 +4321,16 @@ static const String getMarkerId(const String& words)
 
 String MusicXmlParserDirection::matchRepeat(const String& plainWords) const
 {
-    static const std::wregex daCapo(L"^(d\\.? ?|da )(c\\.?|capo)$");
-    static const std::wregex daCapoAlFine(L"^(d\\.? ?|da )(c\\.? ?|capo )al fine$");
-    static const std::wregex daCapoAlCoda(L"^(d\\.? ?|da )(c\\.? ?|capo )al coda ?(i{0,3})?$");
-    static const std::wregex dalSegno(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno) ?(i{0,3})?$");
-    static const std::wregex dalSegnoAlFine(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})? ?(\\(.*\\))? al fine$");
-    static const std::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})? ?(\\(.*\\))? al coda ?(i{0,3})?$");
-    static const std::wregex fine(L"^fine$");
-    static const std::wregex segno(L"^segno( segno)? ?(i{0,3})?$");
-    static const std::wregex toCoda(L"^to coda( coda)? ?(i{0,3})?$");
-    static const std::wregex coda(L"^coda( coda)? ?(i{0,3})?$");
+    static const muse::score_regex::wregex daCapo(L"^(d\\.? ?|da )(c\\.?|capo)$");
+    static const muse::score_regex::wregex daCapoAlFine(L"^(d\\.? ?|da )(c\\.? ?|capo )al fine$");
+    static const muse::score_regex::wregex daCapoAlCoda(L"^(d\\.? ?|da )(c\\.? ?|capo )al coda ?(i{0,3})?$");
+    static const muse::score_regex::wregex dalSegno(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno) ?(i{0,3})?$");
+    static const muse::score_regex::wregex dalSegnoAlFine(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})? ?(\\(.*\\))? al fine$");
+    static const muse::score_regex::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})? ?(\\(.*\\))? al coda ?(i{0,3})?$");
+    static const muse::score_regex::wregex fine(L"^fine$");
+    static const muse::score_regex::wregex segno(L"^segno( segno)? ?(i{0,3})?$");
+    static const muse::score_regex::wregex toCoda(L"^to coda( coda)? ?(i{0,3})?$");
+    static const muse::score_regex::wregex coda(L"^coda( coda)? ?(i{0,3})?$");
 
     if (plainWords.contains(daCapo)) {
         return u"daCapo";
@@ -4391,7 +4391,7 @@ bool MusicXmlParserDirection::isLikelyFingering(const String& fingeringStr) cons
     }
 
     // One or more newline-separated digits, possibly lead or trailed by whitespace
-    static const std::wregex re(
+    static const muse::score_regex::wregex re(
         L"^(?:\\s|\\u00A0)*[-–]?(?:\\s|\\u00A0)?[0-5pimac](?:[-–][0-5pimac])?(?:\n[-–]?(?:\\s|\\u00A0)?[0-5pimac](?:[-–][0-5pimac])?)*(?:\\s|\\u00A0)*$");
     return fingeringStr.contains(re)
            && m_rehearsalText.empty()
@@ -4525,7 +4525,7 @@ void MusicXmlParserDirection::textToDynamic(String& text)
         }
     }
     // We don't want to count a single 'm', 'r', 's' or 'z' as a whole dynamic
-    static const std::wregex singleCharDynamic = std::wregex(L"^[mrsz]$");
+    static const muse::score_regex::wregex singleCharDynamic = muse::score_regex::wregex(L"^[mrsz]$");
     // try to find a dynamic - xml representation or
     // if found add to dynamics list and set text to blank string
     if (!simplifiedText.contains(singleCharDynamic) && TConv::dynamicValid(simplifiedText.toStdString())) {
@@ -4598,7 +4598,7 @@ void MusicXmlParserDirection::addInferredTempoLine(const Fraction& tick)
 static String findDetachedRepeatNumber(const Measure* measure, const track_idx_t track, const Fraction tick, const String& placement,
                                        DelayedDirectionsList& directions)
 {
-    static const std::wregex number(L"^(i{1,3})$");
+    static const muse::score_regex::wregex number(L"^(i{1,3})$");
     DelayedDirectionsList::iterator it;
 
     for (it = directions.begin(); it != directions.end(); ++it) {
@@ -4632,10 +4632,10 @@ static String findDetachedRepeatNumber(const Measure* measure, const track_idx_t
 static String countSegno(const String& plainWords)
 {
     // Count how many 's' in D.S. or D.S.S...
-    std::wsmatch matches;
+    muse::score_regex::wsmatch matches;
     const std::wstring str = plainWords.toStdWString();
-    static const std::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})?(\\(.*\\))? al coda ?(i{0,3})?$");
-    if (std::regex_search(str, matches, dalSegnoAlCoda)) {
+    static const muse::score_regex::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})?(\\(.*\\))? al coda ?(i{0,3})?$");
+    if (muse::score_regex::regex_search(str, matches, dalSegnoAlCoda)) {
         const String segnoGroup = String::fromStdWString(matches.str(2)).toLower();
         const int count = segnoGroup.count('s');
         return String::fromStdString(std::string(count, 'i'));
@@ -4683,10 +4683,10 @@ void MusicXmlParserDirection::handleRepeats(Measure* measure, const Fraction tic
         m_segnoId = getMarkerId(plainWords);
     } else if (repeat == u"dalSegnoAlCoda") {
         // Find numerals eg D.S I al Coda II
-        std::wsmatch matches;
+        muse::score_regex::wsmatch matches;
         std::wstring str = plainWords.toStdWString();
-        static const std::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})?(\\(.*\\))? al coda ?(i{0,3})?$");
-        if (std::regex_search(str, matches, dalSegnoAlCoda)) {
+        static const muse::score_regex::wregex dalSegnoAlCoda(L"^(d\\.? ?|d[ae]l )(s\\.?s?\\.?|segno\\.?) ?(i{0,3})?(\\(.*\\))? al coda ?(i{0,3})?$");
+        if (muse::score_regex::regex_search(str, matches, dalSegnoAlCoda)) {
             m_segnoId = String::fromStdWString(matches.str(3));
             m_codaId = String::fromStdWString(matches.str(5));
         }
@@ -4860,7 +4860,7 @@ void MusicXmlParserDirection::handleChordSym(const Fraction& tick, HarmonyMap& h
         return;
     }
 
-    static const std::wregex re(L"^([abcdefg])(([#b♯♭])\3?)?(maj|min|m)?[769]?((add[#b♯♭]?(9|11|))|(sus[24]?))?(\\(.*\\))?$");
+    static const muse::score_regex::wregex re(L"^([abcdefg])(([#b♯♭])\3?)?(maj|min|m)?[769]?((add[#b♯♭]?(9|11|))|(sus[24]?))?(\\(.*\\))?$");
     String plainWords = m_wordsText.simplified().toLower();
     if (!plainWords.contains(re)) {
         return;
@@ -4941,7 +4941,7 @@ void MusicXmlParserDirection::handleTempo(String& wordsString)
     // which we need to map to SMuFL syms
     String plainWords = MScoreTextToMusicXml::toPlainText(wordsString.simplified());
 
-    static const std::wregex tempo(L".*([" + substitutions.toStdWString() + L"])(\\.?)(?:\\s|\\u00A0)*=[^0-9]*([0-9]+).*");
+    static const muse::score_regex::wregex tempo(L".*([" + substitutions.toStdWString() + L"])(\\.?)(?:\\s|\\u00A0)*=[^0-9]*([0-9]+).*");
     StringList tempoMatches = plainWords.search(tempo, { 1, 2, 3 }, SplitBehavior::SkipEmptyParts);
 
     // Not a tempo
@@ -4955,7 +4955,7 @@ void MusicXmlParserDirection::handleTempo(String& wordsString)
 
     const String dotStr = dot ? u"<sym>space</sym><sym>metAugmentationDot</sym>" : u"";
 
-    static const std::wregex replace(L"(.*)[" + substitutions.toStdWString() + L"]\\.?((?:\\s|\\u00A0)*=[^0-9]*[0-9]+.*)");
+    static const muse::score_regex::wregex replace(L"(.*)[" + substitutions.toStdWString() + L"]\\.?((?:\\s|\\u00A0)*=[^0-9]*[0-9]+.*)");
     const String newStr = u"$1" + textMap.at(dur).first + dotStr + u"$2";
     plainWords.replace(replace, newStr);
     wordsString = plainWords;
@@ -4980,7 +4980,7 @@ bool MusicXmlParserDirection::isLikelySticking()
     }
 
     String plainWords = MScoreTextToMusicXml::toPlainText(m_wordsText.simplified());
-    static const std::wregex sticking(L"^[lrbLRB]+$");
+    static const muse::score_regex::wregex sticking(L"^[lrbLRB]+$");
     return plainWords.contains(sticking)
            && m_rehearsalText.empty()
            && m_metroText.empty()
@@ -4994,7 +4994,7 @@ bool MusicXmlParserDirection::isLikelyDynamicRange() const
     }
 
     String rawWordsText = m_wordsText.simplified();
-    static const std::regex re("(<.*?>)");
+    static const muse::score_regex::regex re("(<.*?>)");
     rawWordsText.remove(re);
 
     // If there are two dynamics and a hyphen in a single direction node, this is most likely something like "mp-f"
@@ -5054,8 +5054,8 @@ void MusicXmlParserDirection::handleDrumInstrument(bool isPerc, Fraction tick) c
 
     String plainWords = m_wordsText;
 
-    static const std::regex to("to ", std::regex_constants::icase);
-    static const std::regex brackets("\\(.*\\)");
+    static const muse::score_regex::regex to("to ", muse::score_regex::regex_constants::icase);
+    static const muse::score_regex::regex brackets("\\(.*\\)");
     plainWords.remove(to);
     plainWords.remove(brackets);
 
@@ -8328,7 +8328,7 @@ bool MusicXmlParserLyric::isLikelySticking(const String& text, const LyricsSylla
         return false;
     }
     String plainWords = MScoreTextToMusicXml::toPlainText(text.simplified());
-    static const std::wregex sticking(L"^[lrbLRB]+$");
+    static const muse::score_regex::wregex sticking(L"^[lrbLRB]+$");
     return plainWords.contains(sticking) && syllabic == LyricsSyllabic::SINGLE && !hasExtend && !m_isVoiceStaff;
 }
 

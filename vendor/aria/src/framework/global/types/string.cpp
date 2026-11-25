@@ -819,15 +819,11 @@ bool String::contains(const String& str, CaseSensitivity cs) const
     }
 }
 
-bool String::contains(const std::wregex& re) const
+bool String::contains(const muse::score_regex::wregex& re) const
 {
     std::wstring ws = toStdWString();
 
-    auto words_begin = std::wsregex_iterator(ws.begin(), ws.end(), re);
-    if (words_begin != std::wsregex_iterator()) {
-        return true;
-    }
-    return false;
+    return muse::score_regex::hasMatch(ws, re);
 }
 
 int String::count(const Char& ch) const
@@ -1020,13 +1016,11 @@ StringList String::split(const String& str, SplitBehavior behavior) const
     return out;
 }
 
-StringList String::split(const std::regex& re, SplitBehavior behavior) const
+StringList String::split(const muse::score_regex::regex& re, SplitBehavior behavior) const
 {
     std::string originU8;
     UtfCodec::utf16to8(std::u16string_view(constStr()), originU8);
-    std::sregex_token_iterator iter(originU8.begin(), originU8.end(), re, -1);
-    std::sregex_token_iterator end;
-    std::vector<std::string> vec = { iter, end };
+    const auto vec = muse::score_regex::tokens(originU8, re, { -1 });
 
     StringList out;
     for (const std::string& s : vec) {
@@ -1043,13 +1037,11 @@ StringList String::split(const std::regex& re, SplitBehavior behavior) const
     return out;
 }
 
-StringList String::search(const std::regex& re, std::initializer_list<int> matches, SplitBehavior behavior) const
+StringList String::search(const muse::score_regex::regex& re, std::initializer_list<int> matches, SplitBehavior behavior) const
 {
     std::string originU8;
     UtfCodec::utf16to8(std::u16string_view(constStr()), originU8);
-    std::sregex_token_iterator iter(originU8.begin(), originU8.end(), re, matches);
-    std::sregex_token_iterator end;
-    std::vector<std::string> vec = { iter, end };
+    const auto vec = muse::score_regex::tokens(originU8, re, matches);
 
     StringList out;
     for (const std::string& s : vec) {
@@ -1065,13 +1057,11 @@ StringList String::search(const std::regex& re, std::initializer_list<int> match
     return out;
 }
 
-StringList String::search(const std::wregex& re, std::initializer_list<int> matches, SplitBehavior behavior) const
+StringList String::search(const muse::score_regex::wregex& re, std::initializer_list<int> matches, SplitBehavior behavior) const
 {
     std::wstring ws = toStdWString();
 
-    std::wsregex_token_iterator iter(ws.begin(), ws.end(), re, matches);
-    std::wsregex_token_iterator end;
-    std::vector<std::wstring> vec = { iter, end };
+    const auto vec = muse::score_regex::tokens(ws, re, matches);
 
     StringList out;
     for (const std::wstring& s : vec) {
@@ -1113,14 +1103,14 @@ String& String::replace(char16_t before, char16_t after)
     return *this;
 }
 
-String& String::replace(const std::regex& re, const String& after)
+String& String::replace(const muse::score_regex::regex& re, const String& after)
 {
     std::string afterU8;
     UtfCodec::utf16to8(std::u16string_view(after.constStr()), afterU8);
 
     std::string originU8;
     UtfCodec::utf16to8(std::u16string_view(constStr()), originU8);
-    std::string replasedU8 = std::regex_replace(originU8, re, afterU8);
+    std::string replasedU8 = muse::score_regex::regex_replace(originU8, re, afterU8);
 
     Mutator h = mutStr();
     std::u16string& sefl = h.s;
@@ -1129,14 +1119,14 @@ String& String::replace(const std::regex& re, const String& after)
     return *this;
 }
 
-String& String::replace(const std::wregex& re, const String& after)
+String& String::replace(const muse::score_regex::wregex& re, const String& after)
 {
     std::wstring afterw;
     afterw = after.toStdWString();
 
     std::wstring originw;
     originw = toStdWString();
-    std::wstring replacedw = std::regex_replace(originw, re, afterw);
+    std::wstring replacedw = muse::score_regex::regex_replace(originw, re, afterw);
 
     mutStr().clear();
     mutStr().resize(replacedw.size());
@@ -1362,14 +1352,11 @@ String String::decodeXmlEntities(const String& src_)
 {
     std::string src = src_.toStdString();
     String ret = src_;
-    static const std::regex re("&#([0-9]+);");
+    static const muse::score_regex::regex re("&#([0-9]+);");
 
-    auto begin = std::sregex_iterator(src.begin(), src.end(), re);
-    auto end = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
-        std::smatch match = *it;
-        std::string str0 = match[0];
-        std::string str1 = match[1];
+    for (const auto& match : muse::score_regex::allMatches(src, re)) {
+        auto str0 = match.str(0);
+        auto str1 = match.str(1);
         ret.replace(String::fromStdString(str0), String(Char(std::stoi(str1))));
     }
     return ret;

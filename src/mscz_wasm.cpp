@@ -42,6 +42,86 @@
 #include "mscz_engine.h"
 #include "textfontbackend.h"
 
+EM_JS(void*, browser_regexp_js,
+      (const void* text, int textSize, const void* pattern, int patternSize,
+       int width, int insensitive, int operation, int* size,
+       const void* replacement, int replacementSize), {
+    // libc++ receives UTF-8 bytes for regex and UTF-16 code units stored as
+    // wchar_t for wregex. Preserve those units so match offsets stay valid.
+    const readUnits = (address, count) => {
+        const heap = width === 1 ? HEAPU8 : HEAPU32;
+        const start = width === 1 ? address : address >>> 2;
+        let value = "";
+        for (let i = 0; i < count; i += 4096) {
+            value += String.fromCharCode(...heap.subarray(start + i, start + Math.min(i + 4096, count)));
+        }
+        return value;
+    };
+    const source = readUnits(text, textSize);
+    let expression = readUnits(pattern, patternSize);
+    const flags = insensitive ? "i" : "";
+    const isGlobal = operation === 3 || operation === 4;
+    const captures = operation === 2 || operation === 3;
+    const key = operation + flags + ':' + expression;
+    const cache = Module['scoreRegexCache'] ??= new Map();
+    let regex = cache.get(key);
+    if (!regex) {
+        // Keep the C locale whitespace class used by the engine's patterns.
+        const asciiSpace = String.fromCharCode(32, 12, 10, 13, 9, 11);
+        let normalized = "";
+        let inClass = false;
+        for (let i = 0; i < expression.length; ++i) {
+            const character = expression[i];
+            if (character.charCodeAt(0) === 92 && i + 1 < expression.length) {
+                const escaped = expression[++i];
+                normalized += escaped === "s" ? (inClass ? asciiSpace : "[" + asciiSpace + "]") : character + escaped;
+                continue;
+            }
+            if (character === "[") inClass = true;
+            if (character === "]") inClass = false;
+            normalized += character;
+        }
+        expression = operation === 1 ? "^(?:" + normalized + ")$(?![^])" : normalized;
+        regex = new RegExp(expression, flags + (isGlobal ? "g" : "") + (captures ? "d" : ""));
+        if (cache.size >= 512) cache.clear();
+        cache.set(key, regex);
+    }
+    regex.lastIndex = 0;
+    if (operation < 2) return regex.test(source) ? 1 : 0;
+    if (operation === 4) {
+        const value = source.replace(regex, readUnits(replacement, replacementSize));
+        HEAP32[size >>> 2] = value.length;
+        if (!value.length) return 0;
+        const result = _mscz_alloc(value.length * width);
+        const heap = width === 1 ? HEAPU8 : HEAPU32;
+        const start = width === 1 ? result : result >>> 2;
+        for (let i = 0; i < value.length; ++i) heap[start + i] = value.charCodeAt(i);
+        return result;
+    }
+
+    const spans = [];
+    let match;
+    while ((match = regex.exec(source))) {
+        spans.push(match.indices.length);
+        for (const pair of match.indices) spans.push(pair ? pair[0] : -1, pair ? pair[1] : -1);
+        if (operation === 2) break;
+        if (match[0] === "") ++regex.lastIndex;
+    }
+    HEAP32[size >>> 2] = spans.length;
+    if (!spans.length) return 0;
+    const result = _mscz_alloc(spans.length * 4);
+    HEAP32.set(spans, result >>> 2);
+    return result;
+});
+
+extern "C" void* mscz_browser_regexp(const void* text, int textSize, const void* pattern, int patternSize,
+                                    int width, int insensitive, int operation, int* size,
+                                    const void* replacement, int replacementSize)
+{
+    return browser_regexp_js(text, textSize, pattern, patternSize, width, insensitive,
+                             operation, size, replacement, replacementSize);
+}
+
 EM_JS(int, has_text_backend, (), { return Module['textFontBackend'] ? 1 : 0; });
 EM_JS(void, measure_browser_text, (const char* family, double px, int bold, int italic, const char* text, double* out), {
     const values = Module['textFontBackend'].measure(UTF8ToString(family), px, !!bold, !!italic, UTF8ToString(text));

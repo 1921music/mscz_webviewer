@@ -27,7 +27,7 @@
 #include <vector>
 #include <string>
 #include <string_view>
-#include <regex>
+#include "regexcompat.h"
 
 #include "containers.h"
 #include "bytearray.h"
@@ -288,7 +288,7 @@ public:
     Char back() const { return at(size() - 1); }
     bool contains(const Char& ch) const;
     bool contains(const String& str, CaseSensitivity cs = CaseSensitive) const;
-    bool contains(const std::wregex& re) const;
+    bool contains(const muse::score_regex::wregex& re) const;
     int count(const Char& ch) const;
     int count(const String& str) const;
     size_t indexOf(const Char& ch, size_t from = 0) const;
@@ -304,17 +304,17 @@ public:
 
     StringList split(const Char& ch, SplitBehavior behavior = KeepEmptyParts) const;
     StringList split(const String& str, SplitBehavior behavior = KeepEmptyParts) const;
-    StringList split(const std::regex& re, SplitBehavior behavior = KeepEmptyParts) const;
-    StringList search(const std::regex& re, std::initializer_list<int> matches, SplitBehavior behavior = KeepEmptyParts) const;
-    StringList search(const std::wregex& re, std::initializer_list<int> matches, SplitBehavior behavior = KeepEmptyParts) const;
+    StringList split(const muse::score_regex::regex& re, SplitBehavior behavior = KeepEmptyParts) const;
+    StringList search(const muse::score_regex::regex& re, std::initializer_list<int> matches, SplitBehavior behavior = KeepEmptyParts) const;
+    StringList search(const muse::score_regex::wregex& re, std::initializer_list<int> matches, SplitBehavior behavior = KeepEmptyParts) const;
     String& replace(const String& before, const String& after);
     String& replace(char16_t before, char16_t after);
-    String& replace(const std::regex& re, const String& after);
-    String& replace(const std::wregex& re, const String& after);
+    String& replace(const muse::score_regex::regex& re, const String& after);
+    String& replace(const muse::score_regex::wregex& re, const String& after);
     String& insert(size_t position, const String& str);
     String& remove(const String& str) { return replace(str, String()); }
-    String& remove(const std::regex& rx) { return replace(rx, String()); }
-    String& remove(const std::wregex& rx) { return replace(rx, String()); }
+    String& remove(const muse::score_regex::regex& rx) { return replace(rx, String()); }
+    String& remove(const muse::score_regex::wregex& rx) { return replace(rx, String()); }
     String& remove(const Char& ch);
     String& remove(char16_t ch);
     String& remove(size_t position, size_t n = muse::nidx);

@@ -81,15 +81,15 @@ void TempoText::setTempoTextType(TempoTextType ttt)
 double TempoText::tempoBpm() const
 {
     //! NOTE: find tempo in format " = 180"
-    std::regex regex("\\s*=\\s*(\\d+[.]{0,1}\\d*)");
-    std::smatch match;
+    muse::score_regex::regex regex("\\s*=\\s*(\\d+[.]{0,1}\\d*)");
+    muse::score_regex::smatch match;
     std::string stru8 = xmlText().toStdString();
-    std::regex_search(stru8, match, regex);
+    muse::score_regex::regex_search(stru8, match, regex);
     if (match.empty() || match.size() < 1) {
         return 0;
     }
 
-    double tempo = String::fromStdString(match[1].str()).toDouble();
+    double tempo = String::fromStdString(match.str(1)).toDouble();
     return tempo;
 }
 
@@ -148,13 +148,13 @@ int TempoText::findTempoDuration(const String& s, int& len, TDuration& dur)
     dur = TDuration();
     std::string su8 = s.toStdString();
     for (const auto& i : tp) {
-        std::regex regex(i.pattern);
-        std::smatch match;
-        std::regex_search(su8, match, regex);
+        muse::score_regex::regex regex(i.pattern);
+        muse::score_regex::smatch match;
+        muse::score_regex::regex_search(su8, match, regex);
         if (!match.empty()) {
-            len = static_cast<int>(String::fromStdString(match[0].str()).size());
+            len = static_cast<int>(String::fromStdString(match.str(0)).size());
             dur = i.d;
-            return std::distance(su8.cbegin(), match[0].first);
+            return match.position();
         }
     }
     return -1;
@@ -260,8 +260,8 @@ void TempoText::undoChangeProperty(Pid id, const PropertyValue& v, PropertyFlags
 void TempoText::updateTempo()
 {
     // cache regexp, they are costly to create
-    static std::unordered_map<String, std::regex> regexps;
-    static std::unordered_map<String, std::regex> regexps2;
+    static std::unordered_map<String, muse::score_regex::regex> regexps;
+    static std::unordered_map<String, muse::score_regex::regex> regexps2;
     String s = plainText();
     s.replace(u",", u".");
     s.replace(u"<sym>space</sym>", u" ");
@@ -274,17 +274,17 @@ void TempoText::updateTempo()
     std::string su8 = s.toStdString();
     for (const TempoPattern& pa : tp) {
         String pattern = String::fromUtf8(pa.pattern);
-        std::regex re;
+        muse::score_regex::regex re;
         if (!muse::contains(regexps, String::fromUtf8(pa.pattern))) {
-            re = std::regex(String(u"%1\\s*=\\s*(\\d+[.]{0,1}\\d*)\\s*").arg(pattern).toStdString());
+            re = muse::score_regex::regex(String(u"%1\\s*=\\s*(\\d+[.]{0,1}\\d*)\\s*").arg(pattern).toStdString());
             regexps[pattern] = re;
         }
         re = muse::value(regexps, pattern);
-        std::smatch match;
-        std::regex_search(su8, match, re);
+        muse::score_regex::smatch match;
+        muse::score_regex::regex_search(su8, match, re);
         if (!match.empty()) {
             if (match.size() == 2) {
-                BeatsPerSecond nt = BeatsPerSecond(String::fromStdString(match[1].str()).toDouble() * pa.f);
+                BeatsPerSecond nt = BeatsPerSecond(String::fromStdString(match.str(1)).toDouble() * pa.f);
                 if (nt != m_tempo) {
                     undoChangeProperty(Pid::TEMPO, PropertyValue(nt), propertyFlags(Pid::TEMPO));
                     m_relative = 1.0;
@@ -297,14 +297,14 @@ void TempoText::updateTempo()
             for (const TempoPattern& pa2 : tp) {
                 String pattern2 = String::fromUtf8(pa2.pattern);
                 String key = String(u"%1_%2").arg(pattern, pattern2);
-                std::regex re2;
+                muse::score_regex::regex re2;
                 if (!muse::contains(regexps2, key)) {
-                    re2 = std::regex(String(u"%1\\s*=\\s*%2\\s*").arg(pattern, pattern2).toStdString());
+                    re2 = muse::score_regex::regex(String(u"%1\\s*=\\s*%2\\s*").arg(pattern, pattern2).toStdString());
                     regexps2[key] = re2;
                 }
                 re2 = muse::value(regexps2, key);
-                std::smatch match2;
-                std::regex_search(su8, match2, re2);
+                muse::score_regex::smatch match2;
+                muse::score_regex::regex_search(su8, match2, re2);
                 if (!match2.empty()) {
                     m_relative = pa2.f / pa.f;
                     m_isRelative = true;

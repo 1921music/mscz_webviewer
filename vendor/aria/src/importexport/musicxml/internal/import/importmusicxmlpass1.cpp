@@ -755,7 +755,7 @@ static bool overrideTextStyleForComposer(const String& creditString)
 {
     // HACK: check if the string is likely to contain composer credit, so the proper text style can be applied.
     // TODO: introduce a flag to decide if we want to do this or not.
-    static const std::wregex re(L"\\s*((Words|Music|Lyrics).*)*by\\s+([A-Z][a-zA-Zö'’-]+\\s[A-Z][a-zA-Zös'’-]+.*)+");
+    static const muse::score_regex::wregex re(L"\\s*((Words|Music|Lyrics).*)*by\\s+([A-Z][a-zA-Zö'’-]+\\s[A-Z][a-zA-Zös'’-]+.*)+");
     return creditString.contains(re);
 }
 
@@ -946,11 +946,11 @@ static bool mustAddWordToVbox(const String& creditType)
 
 bool isLikelySubtitleText(const String& text, const bool caseInsensitive = true)
 {
-    std::regex::flag_type caseOption = caseInsensitive ? std::regex::icase : std::regex::ECMAScript;
-    return text.trimmed().contains(std::wregex(L"^[Ff]rom\\s+(?!$)", caseOption))
-           || text.trimmed().contains(std::wregex(L"^Theme from\\s+(?!$)", caseOption))
-           || text.trimmed().contains(std::wregex(L"(((Op\\.?\\s?\\d+)|(No\\.?\\s?\\d+))\\s?)+", caseOption))
-           || text.trimmed().contains(std::wregex(L"\\(.*[Ff]rom\\s.*\\)", caseOption));
+    muse::score_regex::regex::flag_type caseOption = caseInsensitive ? muse::score_regex::regex::icase : muse::score_regex::regex::ECMAScript;
+    return text.trimmed().contains(muse::score_regex::wregex(L"^[Ff]rom\\s+(?!$)", caseOption))
+           || text.trimmed().contains(muse::score_regex::wregex(L"^Theme from\\s+(?!$)", caseOption))
+           || text.trimmed().contains(muse::score_regex::wregex(L"(((Op\\.?\\s?\\d+)|(No\\.?\\s?\\d+))\\s?)+", caseOption))
+           || text.trimmed().contains(muse::score_regex::wregex(L"\\(.*[Ff]rom\\s.*\\)", caseOption));
 }
 
 //---------------------------------------------------------
@@ -959,9 +959,9 @@ bool isLikelySubtitleText(const String& text, const bool caseInsensitive = true)
 
 bool isLikelyCreditText(const String& text, const bool caseInsensitive = true)
 {
-    std::regex::flag_type caseOption = caseInsensitive ? std::regex::icase : std::regex::ECMAScript;
-    return text.trimmed().contains(std::wregex(L"^((Words|Music|Lyrics|Composed),?(\\sand|\\s&amp;|\\s&)?\\s)*[Bb]y\\s+(?!$)", caseOption))
-           || text.trimmed().contains(std::wregex(L"^(Traditional|Trad\\.)", caseOption));
+    muse::score_regex::regex::flag_type caseOption = caseInsensitive ? muse::score_regex::regex::icase : muse::score_regex::regex::ECMAScript;
+    return text.trimmed().contains(muse::score_regex::wregex(L"^((Words|Music|Lyrics|Composed),?(\\sand|\\s&amp;|\\s&)?\\s)*[Bb]y\\s+(?!$)", caseOption))
+           || text.trimmed().contains(muse::score_regex::wregex(L"^(Traditional|Trad\\.)", caseOption));
 }
 
 static bool isLikelyRightsText(const String& text)
@@ -980,7 +980,7 @@ static void inferFromTitle(String& title, String& inferredSubtitle, String& infe
 {
     StringList subtitleLines;
     StringList creditLines;
-    StringList titleLines = title.split(std::regex("\\n"));
+    StringList titleLines = title.split(muse::score_regex::regex("\\n"));
     size_t nrOfTitleLines = titleLines.size();
     if (nrOfTitleLines == 1) {
         return;
@@ -1081,7 +1081,7 @@ static VBox* addCreditWords(Score* score, const CreditWordsList& crWords, const 
             addText2(vbox, score, w->words, tid, align);
         } else if (w->type == u"rights" && score->metaTag(u"copyright").empty()) {
             // Add rights to footer, not a vbox
-            static const std::regex tagRe("(<.*?>)");
+            static const muse::score_regex::regex tagRe("(<.*?>)");
             String rights = w->words;
             rights.remove(tagRe);
             score->setMetaTag(u"copyright", rights);

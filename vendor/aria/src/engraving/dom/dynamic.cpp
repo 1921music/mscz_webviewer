@@ -242,10 +242,8 @@ void Dynamic::setDynamicType(const String& tag)
 std::pair<DynamicType, String> Dynamic::parseDynamicText(const String& tag) const
 {
     std::string utf8Tag = tag.toStdString();
-    const std::regex dynamicRegex(R"((?:<sym>.*?</sym>)+|(?:\b)[fmnprsz]+(?:\b(?=[^>]|$)))");
-    auto begin = std::sregex_iterator(utf8Tag.begin(), utf8Tag.end(), dynamicRegex);
-    for (auto it = begin; it != std::sregex_iterator(); ++it) {
-        const std::smatch match = *it;
+    const muse::score_regex::regex dynamicRegex(R"((?:<sym>.*?</sym>)+|(?:\b)[fmnprsz]+(?:\b(?=[^>]|$)))");
+    for (const auto& match : muse::score_regex::allMatches(utf8Tag, dynamicRegex)) {
         const std::string matchStr = match.str();
         size_t n = DYN_LIST.size();
         for (size_t i = 0; i < n; ++i) {

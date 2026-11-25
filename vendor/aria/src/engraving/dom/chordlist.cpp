@@ -559,7 +559,7 @@ void ParsedChord::configure(const ChordList* cl)
 void ParsedChord::correctXmlText(const String& s)
 {
     String xmlText = m_xmlText;
-    xmlText.remove(std::regex("[0-9]"));
+    xmlText.remove(muse::score_regex::regex("[0-9]"));
     if (!s.empty()) {
         size_t pos = xmlText.lastIndexOf(u')');
         if (pos == muse::nidx) {
@@ -729,7 +729,7 @@ bool ParsedChord::parse(const String& s, const ChordList* cl, bool syntaxOnly, b
             }
             addToken(s.at(i), ChordTokenClass::TYPE);
         }
-    } else if (tok1.contains(std::wregex(L"[IVX]+"))) {
+    } else if (tok1.contains(muse::score_regex::wregex(L"[IVX]+"))) {
         // Get roman numerals
         for (i = 0; i < tok1.size(); i++) {
             addToken(tok1.at(i), ChordTokenClass::TYPE);
@@ -959,7 +959,7 @@ bool ParsedChord::parse(const String& s, const ChordList* cl, bool syntaxOnly, b
             suffix.append(s.at(i + j));
         }
 
-        if (suffix.contains(std::wregex(L"st|nd|rd|th"))) {
+        if (suffix.contains(muse::score_regex::wregex(L"st|nd|rd|th"))) {
             i += SUFFIX_LEN;
         } else {
             suffix.clear();
@@ -1288,7 +1288,7 @@ bool ParsedChord::parse(const String& s, const ChordList* cl, bool syntaxOnly, b
         StringList altList = m_xmlDegrees.filter(u"alt");
         for (const String& d : altList) {
             String unalt(d);
-            unalt.replace(std::regex("alt[b#]"), u"add");
+            unalt.replace(muse::score_regex::regex("alt[b#]"), u"add");
             if (m_xmlDegrees.removeAll(unalt)) {
                 String alt(d);
                 alt.replace(u"alt", u"add");
@@ -1624,7 +1624,7 @@ const std::vector<RenderActionPtr >& ParsedChord::renderList(const ChordList* cl
 
     // Special stack layout if there is a single 'add' or 'sus' with multiple degrees
     // Standard stack layout if there is only one
-    static const std::wregex SUS_ADD_REGEX = std::wregex(L"sus|add");
+    static const muse::score_regex::wregex SUS_ADD_REGEX = muse::score_regex::wregex(L"sus|add");
     bool stackSusOrAdd = false;
     for (const String& mod : m_modifierList) {
         if (!(stackModifiersEnabled || superScriptEnabled) || !mod.contains(SUS_ADD_REGEX)) {
@@ -1648,7 +1648,7 @@ const std::vector<RenderActionPtr >& ParsedChord::renderList(const ChordList* cl
             continue;
         }
 
-        const bool tokIsSusOrAdd = std::regex_match(n.toStdWString(), SUS_ADD_REGEX);
+        const bool tokIsSusOrAdd = muse::score_regex::regex_match(n.toStdWString(), SUS_ADD_REGEX);
         const bool stackModifier = stackModifiersEnabled && !(stackSusOrAdd && tokIsSusOrAdd);
         const bool superScriptModifier = superScriptEnabled && !(stackSusOrAdd && tokIsSusOrAdd);
         String curMod = m_modifierList.size() > 1 ? m_modifierList.at(modIdx) : u"";
@@ -1756,7 +1756,7 @@ const std::vector<RenderActionPtr >& ParsedChord::renderList(const ChordList* cl
                 } else if (!curModStartsWithAcc && nextModStartsWithAcc) {              // current line has no accidental, next line has accidental -> push before degree
                     m_renderList.emplace_back(new RenderActionPush());                  // and move by next line's accidental's width to align
                     String nextAcc = nextMod;
-                    static const std::wregex DEGREE_REGEX = std::wregex(L"[0-9]+");
+                    static const muse::score_regex::wregex DEGREE_REGEX = muse::score_regex::wregex(L"[0-9]+");
                     nextAcc.replace(DEGREE_REGEX, u"");
                     m_renderList.emplace_back(new RenderActionMoveTextWidth(nextAcc));
                 }

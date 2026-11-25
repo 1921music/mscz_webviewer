@@ -950,7 +950,7 @@ const InstrumentTemplate* searchTemplateForInstrNameList(const std::vector<Strin
     }
 
     if (!bestMatch) {
-        static const std::wregex drumsetRegex(L"drum ?(set|kit)", std::regex_constants::icase);
+        static const muse::score_regex::wregex drumsetRegex(L"drum ?(set|kit)", muse::score_regex::regex_constants::icase);
 
         for (const String& name : nameList) {
             if (name.contains(drumsetRegex)) {

@@ -782,8 +782,8 @@ void CompatUtils::mapHeaderFooterStyles(MasterScore* score)
         const TextStyle* pageNumberTextStyle = textStyle(TextStyleType::PAGE_NUMBER);
 
         //! NOTE: Keep in sync with Page::replaceTextMacros
-        const std::wregex copyrightSearch(LR"(\$[cC])");
-        const std::wregex pageNumberSearch(LR"(\$[pPnN])");
+        const muse::score_regex::wregex copyrightSearch(LR"(\$[cC])");
+        const muse::score_regex::wregex pageNumberSearch(LR"(\$[pPnN])");
 
         bool haveMappedCopyright = false;
         bool haveMappedPageNumber = false;
