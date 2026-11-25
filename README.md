@@ -122,15 +122,15 @@ Measured on November 24, 2026, with default EAS playback. MiB = 1,048,576 bytes;
 
 | File | Bytes | Size |
 |---|---:|---:|
-| **Complete standalone HTML** (`docs/index.html`) | **4,736,143** | **4.52 MiB** |
-| WASM engine (`mscz-engine.wasm`) | 4,886,031 | 4.66 MiB |
+| **Complete standalone HTML** (`docs/index.html`) | **4,703,391** | **4.49 MiB** |
+| WASM engine (`mscz-engine.wasm`) | 4,819,246 | 4.60 MiB |
 | LilyPond converter WASM (`lilypond.wasm`) | 492,804 | 481.25 KiB |
 | Tera 2 WASM (`lilypond-tera.wasm`) | 682,928 | 666.92 KiB |
-| Engine JavaScript (`mscz-engine.js`) | 17,155 | 16.75 KiB |
+| Engine JavaScript (`mscz-engine.js`) | 19,253 | 18.80 KiB |
 | JavaScript wrapper (`mscz.js`) | 9,560 | 9.34 KiB |
 | Font handling (`text-fonts.js`) | 6,559 | 6.41 KiB |
 
-The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.52 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
+The component rows show selected files from the regular build. The standalone HTML embeds its assets using gzip compression and Base64 encoding, so the complete HTML is smaller than the uncompressed WASM engine. **The 4.49 MiB total includes the WASM modules, fonts, synth and GM sound bank.**
 
 Playback comparison from the same MinSizeRel toolchain (bytes; gzip level 9):
 
@@ -262,15 +262,15 @@ LilyPondのリードシートは `.ly`、OpenBookの曲テンプレートは `.l
 
 | ファイル | サイズ（bytes） | 換算 |
 |---|---:|---:|
-| **単一 HTML 全体**（`docs/index.html`） | **4,736,143** | **4.52 MiB** |
-| WASM 本体（`mscz-engine.wasm`） | 4,886,031 | 4.66 MiB |
+| **単一 HTML 全体**（`docs/index.html`） | **4,703,391** | **4.49 MiB** |
+| WASM 本体（`mscz-engine.wasm`） | 4,819,246 | 4.60 MiB |
 | LilyPond 変換 WASM (`lilypond.wasm`) | 492,804 | 481.25 KiB |
 | Tera 2 WASM (`lilypond-tera.wasm`) | 682,928 | 666.92 KiB |
-| エンジン JavaScript（`mscz-engine.js`） | 17,155 | 16.75 KiB |
+| エンジン JavaScript（`mscz-engine.js`） | 19,253 | 18.80 KiB |
 | JavaScript ラッパー（`mscz.js`） | 9,560 | 9.34 KiB |
 | フォント制御（`text-fonts.js`） | 6,559 | 6.41 KiB |
 
-各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.52 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
+各素材の行は通常版の主なビルド成果物のサイズです。単一 HTML では素材を gzip 圧縮・Base64 化して内包するため、非圧縮の WASM 本体より小さくなっています。**4.49 MiB は WASM・フォント・シンセサイザー・GM音源を含む HTML 全体のサイズです。**
 
 ### 開発について
 
